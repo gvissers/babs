@@ -4,6 +4,7 @@ mod mul;
 use crate::digit::{BinaryDigit, Digit, DigitStorage, DecimalDigit};
 use crate::result::Error;
 use num_traits::{Zero, One};
+use std::fmt::Write;
 
 /// Structure describing a big number as a series of digits. The base of the number is determined
 /// by the digit type `T`. The digits are stored in little-endian order, i.e. the least significant
@@ -25,6 +26,12 @@ impl<T> UBig<T>
         let mut result = UBig { digits };
         result.drop_leading_zeros();
         result
+    }
+
+    /// Return the number of digits in this number
+    pub fn nr_digits(&self) -> usize
+    {
+        self.digits.len()
     }
 
     /// Return the digits this number is made up of
@@ -130,6 +137,72 @@ where T: DigitStorage, DecimalDigit<T>: Digit
                 digits.push(digit);
             }
             Ok(UBig::new(digits))
+        }
+    }
+}
+
+impl<T> std::fmt::LowerHex for UBig<BinaryDigit<T>>
+where T: DigitStorage + std::fmt::LowerHex
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        match self.nr_digits()
+        {
+            0 => { T::zero().fmt(f) },
+            1 => { self.digits[0].0.fmt(f) },
+            n => {
+                let mut s = String::with_capacity(n * BinaryDigit::<T>::NR_HEX_PLACES);
+                write!(s, "{:x}", self.digits.last().unwrap().0)?;
+                for d in self.digits.iter().rev().skip(1)
+                {
+                    write!(s, "{:0width$x}", d.0, width=BinaryDigit::<T>::NR_HEX_PLACES)?;
+                }
+                f.pad_integral(true, "0x", &s)
+            }
+        }
+    }
+}
+
+impl<T> std::fmt::UpperHex for UBig<BinaryDigit<T>>
+where T: DigitStorage + std::fmt::UpperHex
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        match self.nr_digits()
+        {
+            0 => { T::zero().fmt(f) },
+            1 => { self.digits[0].0.fmt(f) },
+            n => {
+                let mut s = String::with_capacity(n * BinaryDigit::<T>::NR_HEX_PLACES);
+                write!(s, "{:X}", self.digits.last().unwrap().0)?;
+                for d in self.digits.iter().rev().skip(1)
+                {
+                    write!(s, "{:0width$X}", d.0, width=BinaryDigit::<T>::NR_HEX_PLACES)?;
+                }
+                f.pad_integral(true, "0x", &s)
+            }
+        }
+    }
+}
+
+impl<T> std::fmt::Display for UBig<DecimalDigit<T>>
+where T: DigitStorage + std::fmt::Display
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        match self.nr_digits()
+        {
+            0 => { T::zero().fmt(f) },
+            1 => { self.digits[0].0.fmt(f) },
+            n => {
+                let mut s = String::with_capacity(n * DecimalDigit::<T>::NR_DECIMAL_PLACES);
+                write!(s, "{}", self.digits.last().unwrap().0)?;
+                for d in self.digits.iter().rev().skip(1)
+                {
+                    write!(s, "{:0width$}", d.0, width=DecimalDigit::<T>::NR_DECIMAL_PLACES)?;
+                }
+                f.pad_integral(true, "", &s)
+            }
         }
     }
 }
@@ -392,5 +465,146 @@ mod test
 
         let res = "0x123hello".parse::<UBig<DecimalDigit<u32>>>();
         assert_eq!(res, Err(Error::InvalidNumber));
+    }
+
+    #[test]
+    fn test_lowerhex_binary()
+    {
+        let n = UBig::<BinaryDigit<u32>>::new(vec![]);
+        let s = format!("{:x}", n);
+        assert_eq!(s, "0");
+
+        let n = UBig::<BinaryDigit<u32>>::new(vec![]);
+        let s = format!("{:#x}", n);
+        assert_eq!(s, "0x0");
+
+        let n = UBig::<BinaryDigit<u32>>::new(vec![]);
+        let s = format!("{:#016x}", n);
+        assert_eq!(s, "0x00000000000000");
+
+        let n = UBig::new(vec![BinaryDigit(0x1f2e3d4cu32)]);
+        let s = format!("{:x}", n);
+        assert_eq!(s, "1f2e3d4c");
+
+        let n = UBig::new(vec![BinaryDigit(0x1f2e3d4cu32)]);
+        let s = format!("{:#x}", n);
+        assert_eq!(s, "0x1f2e3d4c");
+
+        let n = UBig::new(vec![BinaryDigit(0x1f2e3d4cu32)]);
+        let s = format!("{:#016x}", n);
+        assert_eq!(s, "0x0000001f2e3d4c");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:x}", n);
+        assert_eq!(s, "30201");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:#x}", n);
+        assert_eq!(s, "0x30201");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:16x}", n);
+        assert_eq!(s, "           30201");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:#16x}", n);
+        assert_eq!(s, "         0x30201");
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:#016x}", n);
+        assert_eq!(s, "0x00000000030201");
+    }
+
+    #[test]
+    fn test_upperhex_binary()
+    {
+        let n = UBig::<BinaryDigit<u32>>::new(vec![]);
+        let s = format!("{:X}", n);
+        assert_eq!(s, "0");
+
+        let n = UBig::<BinaryDigit<u32>>::new(vec![]);
+        let s = format!("{:#X}", n);
+        assert_eq!(s, "0x0");
+
+        let n = UBig::<BinaryDigit<u32>>::new(vec![]);
+        let s = format!("{:#016X}", n);
+        assert_eq!(s, "0x00000000000000");
+
+        let n = UBig::new(vec![BinaryDigit(0x1f2e3d4cu32)]);
+        let s = format!("{:X}", n);
+        assert_eq!(s, "1F2E3D4C");
+
+        let n = UBig::new(vec![BinaryDigit(0x1f2e3d4cu32)]);
+        let s = format!("{:#X}", n);
+        assert_eq!(s, "0x1F2E3D4C");
+
+        let n = UBig::new(vec![BinaryDigit(0x1f2e3d4cu32)]);
+        let s = format!("{:#016X}", n);
+        assert_eq!(s, "0x0000001F2E3D4C");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:X}", n);
+        assert_eq!(s, "30201");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:#X}", n);
+        assert_eq!(s, "0x30201");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:16X}", n);
+        assert_eq!(s, "           30201");
+
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:#16X}", n);
+        assert_eq!(s, "         0x30201");
+        let n = UBig::new(vec![BinaryDigit(0x01u8), BinaryDigit(0x02u8), BinaryDigit(0x03u8)]);
+        let s = format!("{:#016X}", n);
+        assert_eq!(s, "0x00000000030201");
+    }
+
+    #[test]
+    fn test_display_decimal()
+    {
+        let n = UBig::<DecimalDigit<u32>>::new(vec![]);
+        let s = format!("{}", n);
+        assert_eq!(s, "0");
+
+        let n = UBig::new(vec![DecimalDigit(123_456_789u32)]);
+        let s = format!("{}", n);
+        assert_eq!(s, "123456789");
+
+        let n = UBig::new(vec![DecimalDigit(123_456_789u32), DecimalDigit(987_654_321)]);
+        let s = format!("{}", n);
+        assert_eq!(s, "987654321123456789");
+
+        let n = UBig::new(vec![DecimalDigit(123u32), DecimalDigit(987_654_321)]);
+        let s = format!("{}", n);
+        assert_eq!(s, "987654321000000123");
+
+        let n = UBig::new(vec![DecimalDigit(123_456_789u32), DecimalDigit(987)]);
+        let s = format!("{}", n);
+        assert_eq!(s, "987123456789");
+
+        let n = UBig::new(vec![DecimalDigit(1u16), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)]);
+        let s = format!("{}", n);
+        assert_eq!(s, "4000300020001");
+
+        let n = UBig::new(vec![DecimalDigit(1u16), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)]);
+        let s = format!("{:020}", n);
+        assert_eq!(s, "00000004000300020001");
+
+        let n = UBig::new(vec![DecimalDigit(1u16), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)]);
+        let s = format!("{:0<20}", n);
+        assert_eq!(s, "40003000200010000000");
+
+        let n = UBig::new(vec![DecimalDigit(1u16), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)]);
+        let s = format!("{:0^20}", n);
+        assert_eq!(s, "00040003000200010000");
+
+        let n = UBig::new(vec![DecimalDigit(1u16)]);
+        let s = format!("{:_>20}", n);
+        assert_eq!(s, "___________________1");
+        let n = UBig::new(vec![DecimalDigit(1u16), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)]);
+        let s = format!("{:_>20}", n);
+        assert_eq!(s, "_______4000300020001");
     }
 }
