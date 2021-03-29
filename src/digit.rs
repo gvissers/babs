@@ -2,16 +2,30 @@ use crate::result::{Error, Result};
 
 /// Trait for the underlying type of a digit
 pub trait DigitStorage:
-      Clone + Copy
+      Clone + Copy + PartialOrd
     + num_traits::One
     + num_traits::Zero
     + num_traits::Pow<usize, Output=Self>
+    + std::ops::Div<Output=Self>
+    + std::ops::Rem<Output=Self>
+    + std::ops::Sub<Output=Self>
     + std::ops::Shl<usize, Output=Self>
-{}
+{
+    const DECIMAL_RADIX: Self;
+}
 
-impl DigitStorage for u8 {}
-impl DigitStorage for u16 {}
-impl DigitStorage for u32 {}
+impl DigitStorage for u8
+{
+    const DECIMAL_RADIX: Self = 100;
+}
+impl DigitStorage for u16
+{
+    const DECIMAL_RADIX: Self = 10_000;
+}
+impl DigitStorage for u32
+{
+    const DECIMAL_RADIX: Self = 1_000_000_000;
+}
 
 /// Trait for a type that can be used as a digit in a big number
 pub trait Digit:
@@ -60,101 +74,46 @@ impl<T> BinaryDigit<T>
     pub const MAX_DECIMAL_PLACES: usize = std::mem::size_of::<T>() * 643 / 267;
 }
 
-impl Digit for BinaryDigit<u8>
+macro_rules! impl_digit_binary
 {
-    const MAX: Self = BinaryDigit(u8::max_value());
+    ($dt:ty, $wdt:ty) => {
+        impl Digit for BinaryDigit<$dt>
+        {
+            const MAX: Self = BinaryDigit(<$dt>::max_value());
 
-    fn from_base_str(s: &str, base: u32) -> Result<Self>
-    {
-        let d = u8::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
-        Ok(BinaryDigit(d))
-    }
+            fn from_base_str(s: &str, base: u32) -> Result<Self>
+            {
+                let d = <$dt>::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
+                Ok(BinaryDigit(d))
+            }
 
-    fn inc(&mut self) -> bool
-    {
-        let (n, overflow) = self.0.overflowing_add(1);
-        self.0 = n;
-        overflow
-    }
+            fn inc(&mut self) -> bool
+            {
+                let (n, overflow) = self.0.overflowing_add(1);
+                self.0 = n;
+                overflow
+            }
 
-    fn add_assign(&mut self, other: Self) -> bool
-    {
-        let (n, overflow) = self.0.overflowing_add(other.0);
-        self.0 = n;
-        overflow
-    }
+            fn add_assign(&mut self, other: Self) -> bool
+            {
+                let (n, overflow) = self.0.overflowing_add(other.0);
+                self.0 = n;
+                overflow
+            }
 
-    fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
-    {
-        let tmp = self.0 as u16 * fac.0 as u16 + off.0 as u16;
-        self.0 = (tmp & Self::MAX.0 as u16) as u8;
-        BinaryDigit((tmp >> Self::NR_BITS) as u8)
+            fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
+            {
+                let tmp = self.0 as $wdt * fac.0 as $wdt + off.0 as $wdt;
+                self.0 = (tmp & Self::MAX.0 as $wdt) as $dt;
+                BinaryDigit((tmp >> Self::NR_BITS) as $dt)
+            }
+        }
     }
 }
 
-impl Digit for BinaryDigit<u16>
-{
-    const MAX: Self = BinaryDigit(u16::max_value());
-
-    fn from_base_str(s: &str, base: u32) -> Result<Self>
-    {
-        let d = u16::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
-        Ok(BinaryDigit(d))
-    }
-
-    fn inc(&mut self) -> bool
-    {
-        let (n, overflow) = self.0.overflowing_add(1);
-        self.0 = n;
-        overflow
-    }
-
-    fn add_assign(&mut self, other: Self) -> bool
-    {
-        let (n, overflow) = self.0.overflowing_add(other.0);
-        self.0 = n;
-        overflow
-    }
-
-    fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
-    {
-        let tmp = self.0 as u32 * fac.0 as u32 + off.0 as u32;
-        self.0 = (tmp & Self::MAX.0 as u32) as u16;
-        BinaryDigit((tmp >> Self::NR_BITS) as u16)
-    }
-}
-
-impl Digit for BinaryDigit<u32>
-{
-    const MAX: Self = BinaryDigit(u32::max_value());
-
-    fn from_base_str(s: &str, base: u32) -> Result<Self>
-    {
-        let d = u32::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
-        Ok(BinaryDigit(d))
-    }
-
-    fn inc(&mut self) -> bool
-    {
-        let (n, overflow) = self.0.overflowing_add(1);
-        self.0 = n;
-        overflow
-    }
-
-    fn add_assign(&mut self, other: Self) -> bool
-    {
-        let (n, overflow) = self.0.overflowing_add(other.0);
-        self.0 = n;
-        overflow
-    }
-
-    fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
-    {
-        let tmp = self.0 as u64 * fac.0 as u64 + off.0 as u64;
-        self.0 = (tmp & Self::MAX.0 as u64) as u32;
-        BinaryDigit((tmp >> Self::NR_BITS) as u32)
-    }
-}
+impl_digit_binary!(u8, u16);
+impl_digit_binary!(u16, u32);
+impl_digit_binary!(u32, u64);
 
 impl<T> num_traits::Zero for BinaryDigit<T>
 where T: num_traits::Zero
@@ -209,181 +168,80 @@ where T: DigitStorage
     pub const NR_DECIMAL_PLACES: usize = std::mem::size_of::<T>() * 643 / 267;
     /// The maximum length of a hexadecimal number that still fits in a single digit
     pub const MAX_HEX_PLACES: usize = 2 * std::mem::size_of::<T>() - 1;
+
+    /// Return whether a value of the underlying storage type fits into a single decimal digit
+    pub fn fits_single(d: T) -> bool
+    {
+        d < T::DECIMAL_RADIX
+    }
+    /// Split a value of the underlying storage type that is greater than the radix into separate digits
+    pub fn split(d: T) -> (Self, Self)
+    {
+        (DecimalDigit(d / T::DECIMAL_RADIX), DecimalDigit(d % T::DECIMAL_RADIX))
+    }
 }
 
-impl DecimalDigit<u8>
+macro_rules! impl_digit_decimal
 {
-    const RADIX: u8 = 10u8.pow(Self::NR_DECIMAL_PLACES as u32);
-}
-
-impl DecimalDigit<u16>
-{
-    const RADIX: u16 = 10u16.pow(Self::NR_DECIMAL_PLACES as u32);
-}
-
-impl DecimalDigit<u32>
-{
-    const RADIX: u32 = 10u32.pow(Self::NR_DECIMAL_PLACES as u32);
-}
-
-impl Digit for DecimalDigit<u8>
-{
-    const MAX: Self = DecimalDigit(Self::RADIX - 1);
-
-    fn from_base_str(s: &str, base: u32) -> Result<Self>
-    {
-        let d = u8::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
-        if d < Self::RADIX
+    ($dt:ty, $wdt:ty) => {
+        impl Digit for DecimalDigit<$dt>
         {
-            Ok(DecimalDigit(d))
-        }
-        else
-        {
-            Err(Error::InvalidNumber)
-        }
-    }
+            const MAX: Self = DecimalDigit(<$dt>::DECIMAL_RADIX - 1);
 
-    fn inc(&mut self) -> bool
-    {
-        if *self == Self::MAX
-        {
-            self.0 = 0;
-            true
-        }
-        else
-        {
-            self.0 += 1;
-            false
-        }
-    }
+            fn from_base_str(s: &str, base: u32) -> Result<Self>
+            {
+                let d = <$dt>::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
+                if d < <$dt>::DECIMAL_RADIX
+                {
+                    Ok(DecimalDigit(d))
+                }
+                else
+                {
+                    Err(Error::InvalidNumber)
+                }
+            }
 
-    fn add_assign(&mut self, other: Self) -> bool
-    {
-        self.0 += other.0;
-        if self.0 >= Self::RADIX
-        {
-            self.0 -= Self::RADIX;
-            true
-        }
-        else
-        {
-            false
-        }
-    }
+            fn inc(&mut self) -> bool
+            {
+                if self.0 == <$dt>::DECIMAL_RADIX - 1
+                {
+                    self.0 = 0;
+                    true
+                }
+                else
+                {
+                    self.0 += 1;
+                    false
+                }
+            }
 
-    fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
-    {
-        let tmp = self.0 as u16 * fac.0 as u16 + off.0 as u16;
-        self.0 = (tmp % Self::RADIX as u16) as u8;
-        DecimalDigit((tmp / Self::RADIX as u16) as u8)
+            fn add_assign(&mut self, other: Self) -> bool
+            {
+                self.0 += other.0;
+                if self.0 >= <$dt>::DECIMAL_RADIX
+                {
+                    self.0 -= <$dt>::DECIMAL_RADIX;
+                    true
+                }
+                else
+                {
+                    false
+                }
+            }
+
+            fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
+            {
+                let tmp = self.0 as $wdt * fac.0 as $wdt + off.0 as $wdt;
+                self.0 = (tmp % <$dt>::DECIMAL_RADIX as $wdt) as $dt;
+                DecimalDigit((tmp / <$dt>::DECIMAL_RADIX as $wdt) as $dt)
+            }
+        }
     }
 }
 
-impl Digit for DecimalDigit<u16>
-{
-    const MAX: Self = DecimalDigit(Self::RADIX - 1);
-
-    fn from_base_str(s: &str, base: u32) -> Result<Self>
-    {
-        let d = u16::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
-        if d < Self::RADIX
-        {
-            Ok(DecimalDigit(d))
-        }
-        else
-        {
-            Err(Error::InvalidNumber)
-        }
-    }
-
-    fn inc(&mut self) -> bool
-    {
-        if *self == Self::MAX
-        {
-            self.0 = 0;
-            true
-        }
-        else
-        {
-            self.0 += 1;
-            false
-        }
-    }
-
-    fn add_assign(&mut self, other: Self) -> bool
-    {
-        self.0 += other.0;
-        if self.0 >= Self::RADIX
-        {
-            self.0 -= Self::RADIX;
-            true
-        }
-        else
-        {
-            false
-        }
-    }
-
-    fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
-    {
-        let tmp = self.0 as u32 * fac.0 as u32 + off.0 as u32;
-        self.0 = (tmp % Self::RADIX as u32) as u16;
-        DecimalDigit((tmp / Self::RADIX as u32) as u16)
-    }
-}
-
-impl Digit for DecimalDigit<u32>
-{
-    const MAX: Self = DecimalDigit(Self::RADIX - 1);
-
-    fn from_base_str(s: &str, base: u32) -> Result<Self>
-    {
-        let d = u32::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
-        if d < Self::RADIX
-        {
-            Ok(DecimalDigit(d))
-        }
-        else
-        {
-            Err(Error::InvalidNumber)
-        }
-    }
-
-    fn inc(&mut self) -> bool
-    {
-        if *self == Self::MAX
-        {
-            self.0 = 0;
-            true
-        }
-        else
-        {
-            self.0 += 1;
-            false
-        }
-    }
-
-    fn add_assign(&mut self, other: Self) -> bool
-    {
-        self.0 += other.0;
-        if self.0 >= Self::RADIX
-        {
-            self.0 -= Self::RADIX;
-            true
-        }
-        else
-        {
-            false
-        }
-    }
-
-    fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
-    {
-        let tmp = self.0 as u64 * fac.0 as u64 + off.0 as u64;
-        self.0 = (tmp % Self::RADIX as u64) as u32;
-        DecimalDigit((tmp / Self::RADIX as u64) as u32)
-    }
-}
+impl_digit_decimal!(u8, u16);
+impl_digit_decimal!(u16, u32);
+impl_digit_decimal!(u32, u64);
 
 impl<T> num_traits::Zero for DecimalDigit<T>
 where T: num_traits::Zero

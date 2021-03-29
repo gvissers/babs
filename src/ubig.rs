@@ -230,7 +230,7 @@ where T: One
 }
 
 impl<T> std::ops::AddAssign<T> for UBig<T>
-where T: Digit + One + Zero
+where T: Digit
 {
     fn add_assign(&mut self, digit: T)
     {
@@ -241,8 +241,42 @@ where T: Digit + One + Zero
     }
 }
 
+impl<T> std::ops::AddAssign<T> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    fn add_assign(&mut self, digit: T)
+    {
+        *self += BinaryDigit(digit)
+    }
+}
+
+impl<T> std::ops::AddAssign<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    fn add_assign(&mut self, n: T)
+    {
+        if DecimalDigit::fits_single(n)
+        {
+            *self += DecimalDigit(n);
+        }
+        else
+        {
+            let (high, low) = DecimalDigit::split(n);
+            *self += low;
+            if self.digits.is_empty()
+            {
+                self.digits.push(DecimalDigit::zero());
+            }
+            if let Some(carry) = add::add_assign_digit(&mut self.digits[1..], high)
+            {
+                self.digits.push(carry);
+            }
+        }
+    }
+}
+
 impl<T> std::ops::Add<T> for UBig<T>
-where T: Clone + Digit + One + Zero
+where T: Digit
 {
     type Output = Self;
     fn add(self, digit: T) -> Self::Output
@@ -252,9 +286,53 @@ where T: Clone + Digit + One + Zero
 }
 
 impl<T> std::ops::Add<T> for &UBig<T>
-where T: Clone + Digit + One + Zero
+where T: Digit
 {
     type Output = UBig<T>;
+    fn add(self, digit: T) -> Self::Output
+    {
+        let mut sum = self.clone();
+        sum += digit;
+        sum
+    }
+}
+
+impl<T> std::ops::Add<T> for UBig<BinaryDigit<T>>
+where T: DigitStorage, BinaryDigit<T>: Digit
+{
+    type Output = Self;
+    fn add(self, digit: T) -> Self::Output
+    {
+        &self + digit
+    }
+}
+
+impl<T> std::ops::Add<T> for &UBig<BinaryDigit<T>>
+where T: DigitStorage, BinaryDigit<T>: Digit
+{
+    type Output = UBig<BinaryDigit<T>>;
+    fn add(self, digit: T) -> Self::Output
+    {
+        let mut sum = self.clone();
+        sum += digit;
+        sum
+    }
+}
+
+impl<T> std::ops::Add<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = Self;
+    fn add(self, digit: T) -> Self::Output
+    {
+        &self + digit
+    }
+}
+
+impl<T> std::ops::Add<T> for &UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = UBig<DecimalDigit<T>>;
     fn add(self, digit: T) -> Self::Output
     {
         let mut sum = self.clone();
