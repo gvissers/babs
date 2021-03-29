@@ -41,7 +41,7 @@ impl<T> UBig<T>
     }
 
     /// Remove leading zero from this number, if any
-    pub fn drop_leading_zeros(&mut self)
+    fn drop_leading_zeros(&mut self)
     where T: Zero
     {
         while let Some(d) = self.digits.last()
@@ -66,6 +66,37 @@ impl<T> UBig<T>
             self.digits.push(digit);
         }
     }
+
+    /// Add `other * b`<sup>`offset`</sup> to this number, where `b` is the base of this number.
+    fn add_assign_big_at_offset(&mut self, other: &Self, offset: usize) -> &mut Self
+    where T: Digit
+    {
+        let n0 = self.nr_digits();
+        let n1 = other.nr_digits();
+        if n0 <= offset
+        {
+            self.digits.extend(std::iter::repeat(T::zero()).take(offset - n0));
+            self.digits.extend(&other.digits);
+        }
+        else if n1 <= n0 - offset
+        {
+            if let Some(carry) = add::add_assign_big(&mut self.digits[offset..], &other.digits)
+            {
+                self.digits.push(carry);
+            }
+        }
+        else
+        {
+            self.digits.extend(&other.digits[n0-offset..]);
+            if let Some(carry) = add::add_assign_big(&mut self.digits[offset..], &other.digits[..n0-offset])
+            {
+                self.digits.push(carry);
+            }
+        }
+
+        self
+    }
+
 }
 
 impl<T> std::str::FromStr for UBig<BinaryDigit<T>>
@@ -208,6 +239,7 @@ where T: DigitStorage + std::fmt::Display
 }
 
 impl<T> Zero for UBig<T>
+where T: Digit
 {
     fn zero() -> Self
     {
@@ -246,7 +278,7 @@ where BinaryDigit<T>: Digit
 {
     fn add_assign(&mut self, digit: T)
     {
-        *self += BinaryDigit(digit)
+        *self += BinaryDigit(digit);
     }
 }
 
@@ -272,6 +304,24 @@ where T: DigitStorage, DecimalDigit<T>: Digit
                 self.digits.push(carry);
             }
         }
+    }
+}
+
+impl<T> std::ops::AddAssign<UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn add_assign(&mut self, other: UBig<T>)
+    {
+        *self += &other;
+    }
+}
+
+impl<T> std::ops::AddAssign<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn add_assign(&mut self, other: &UBig<T>)
+    {
+        self.add_assign_big_at_offset(other, 0);
     }
 }
 
@@ -342,13 +392,70 @@ where T: DigitStorage, DecimalDigit<T>: Digit
 }
 
 impl<T> std::ops::Add<UBig<T>> for UBig<T>
+where T: Digit
 {
     type Output = Self;
-    fn add(self, other: UBig<T>) -> Self
+    fn add(self, other: UBig<T>) -> Self::Output
     {
-        unimplemented!()
+        &self + &other
     }
 }
+
+impl<T> std::ops::Add<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn add(self, other: &UBig<T>) -> Self::Output
+    {
+        &self + other
+    }
+}
+
+impl<T> std::ops::Add<UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn add(self, other: UBig<T>) -> Self::Output
+    {
+        self + &other
+    }
+}
+
+impl<T> std::ops::Add<&UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn add(self, other: &UBig<T>) -> Self::Output
+    {
+        let mut n = self.clone();
+        n += other;
+        n
+    }
+}
+
+
+impl<T> std::ops::MulAssign<T> for UBig<T>
+where T: Digit
+{
+    fn mul_assign(&mut self, digit: T)
+    {
+        self.mul_add_assign_digit(digit, T::zero());
+    }
+}
+
+impl<T> std::ops::MulAssign<T> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    fn mul_assign(&mut self, digit: T)
+    {
+        *self *= BinaryDigit(digit);
+    }
+}
+
+
+
+
+
 
 impl<T> std::ops::Mul<UBig<T>> for UBig<T>
 {

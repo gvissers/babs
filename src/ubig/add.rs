@@ -1,10 +1,9 @@
 use crate::digit::Digit;
-use num_traits::{One, Zero};
 
 /// Increment the numer or number part represented by the digits in `nr` by one, and return the
 /// carry on overflow, or `None` if the number does not overflow.
 pub fn inc_assign<T>(nr: &mut [T]) -> Option<T>
-where T: Digit + One
+where T: Digit
 {
     for digit in nr.iter_mut()
     {
@@ -19,7 +18,7 @@ where T: Digit + One
 /// Add the single digit `digit` to the number or number part represented by the digits in `nr`,
 /// and return the carry on overflow, or `None` if the number does not overflow.
 pub fn add_assign_digit<T>(nr: &mut [T], digit: T) -> Option<T>
-where T: Digit + One + Zero
+where T: Digit
 {
     if digit.is_zero()
     {
@@ -39,11 +38,39 @@ where T: Digit + One + Zero
     }
 }
 
+/// Add the big number represented by te digits in `n1` to the number or number part represented
+/// by `n0`, and return the carry on overflow, or `None` if the number does not overflow. The length
+/// of `nr1` must not be greater than the length of `nr0`.
+pub fn add_assign_big<T>(nr0: &mut [T], nr1: &[T]) -> Option<T>
+where T: Digit
+{
+    assert!(nr1.len() <= nr0.len());
+
+    let mut carry = false;
+    for (d0, &d1) in nr0.iter_mut().zip(nr1)
+    {
+        if carry
+        {
+            carry = d0.inc();
+        }
+        carry |= d0.add_assign(d1)
+    }
+
+    if carry
+    {
+        inc_assign(&mut nr0[nr1.len()..])
+    }
+    else
+    {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests
 {
     use crate::digit::{DecimalDigit, BinaryDigit};
-    use super::{add_assign_digit, inc_assign};
+    use super::{add_assign_big, add_assign_digit, inc_assign};
 
     #[test]
     fn test_inc_assign_binary()
@@ -298,6 +325,98 @@ mod tests
         let mut nr = [DecimalDigit(999_999_950u32), DecimalDigit(999_999_999), DecimalDigit(999_999_999)];
         let overflow = add_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(5), DecimalDigit(0), DecimalDigit(0)]);
+        assert_eq!(overflow, Some(DecimalDigit(1)));
+    }
+
+    #[test]
+    fn test_add_assign_big_binary()
+    {
+        let mut nr0 = [BinaryDigit(1u8)];
+        let nr1 = [];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [BinaryDigit(1)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [BinaryDigit(1u8)];
+        let nr1 = [BinaryDigit(0xfeu8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [BinaryDigit(0xff)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [BinaryDigit(1u8)];
+        let nr1 = [BinaryDigit(0xffu8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [BinaryDigit(0)]);
+        assert_eq!(overflow, Some(BinaryDigit(1)));
+
+        let mut nr0 = [BinaryDigit(0x80u8)];
+        let nr1 = [BinaryDigit(0xffu8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [BinaryDigit(0x7f)]);
+        assert_eq!(overflow, Some(BinaryDigit(1)));
+
+        let mut nr0 = [BinaryDigit(0x80u8), BinaryDigit(2)];
+        let nr1 = [BinaryDigit(0xffu8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [BinaryDigit(0x7f), BinaryDigit(3)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [BinaryDigit(0x80u8), BinaryDigit(0xff), BinaryDigit(0xfe), BinaryDigit(0xff)];
+        let nr1 = [BinaryDigit(0xffu8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [BinaryDigit(0x7f), BinaryDigit(0), BinaryDigit(0xff), BinaryDigit(0xff)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [BinaryDigit(0x80u8), BinaryDigit(0xff), BinaryDigit(0xff), BinaryDigit(0xff)];
+        let nr1 = [BinaryDigit(0xffu8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [BinaryDigit(0x7f), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0)]);
+        assert_eq!(overflow, Some(BinaryDigit(1)));
+    }
+
+    #[test]
+    fn test_add_assign_big_decimal()
+    {
+        let mut nr0 = [DecimalDigit(1u8)];
+        let nr1 = [];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [DecimalDigit(1)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [DecimalDigit(1u8)];
+        let nr1 = [DecimalDigit(98u8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [DecimalDigit(99)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [DecimalDigit(1u8)];
+        let nr1 = [DecimalDigit(99u8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [DecimalDigit(0)]);
+        assert_eq!(overflow, Some(DecimalDigit(1)));
+
+        let mut nr0 = [DecimalDigit(50u8)];
+        let nr1 = [DecimalDigit(99u8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [DecimalDigit(49)]);
+        assert_eq!(overflow, Some(DecimalDigit(1)));
+
+        let mut nr0 = [DecimalDigit(50u8), DecimalDigit(2)];
+        let nr1 = [DecimalDigit(99u8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [DecimalDigit(49), DecimalDigit(3)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [DecimalDigit(50u8), DecimalDigit(99), DecimalDigit(98), DecimalDigit(99)];
+        let nr1 = [DecimalDigit(99u8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [DecimalDigit(49), DecimalDigit(0), DecimalDigit(99), DecimalDigit(99)]);
+        assert_eq!(overflow, None);
+
+        let mut nr0 = [DecimalDigit(50u8), DecimalDigit(99), DecimalDigit(99), DecimalDigit(99)];
+        let nr1 = [DecimalDigit(99u8)];
+        let overflow = add_assign_big(&mut nr0, &nr1);
+        assert_eq!(nr0, [DecimalDigit(49), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0)]);
         assert_eq!(overflow, Some(DecimalDigit(1)));
     }
 }
