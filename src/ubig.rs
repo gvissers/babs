@@ -79,10 +79,10 @@ where T: DigitStorage, BinaryDigit<T>: Digit
         {
             Err(Error::InvalidNumber)
         }
-        else if s.starts_with("0x")
+        else if let Some(s) = s.strip_prefix("0x")
         {
             let mut digits = Vec::with_capacity(s.len() / BinaryDigit::<T>::NR_HEX_PLACES + 1);
-            for part in s[2..].as_bytes().rchunks(BinaryDigit::<T>::NR_HEX_PLACES)
+            for part in s.as_bytes().rchunks(BinaryDigit::<T>::NR_HEX_PLACES)
             {
                 let digit = BinaryDigit::<T>::from_hexadecimal_str(std::str::from_utf8(part).unwrap())?;
                 digits.push(digit);
@@ -116,12 +116,12 @@ where T: DigitStorage, DecimalDigit<T>: Digit
         {
             Err(Error::InvalidNumber)
         }
-        else if s.starts_with("0x")
+        else if let Some(s) = s.strip_prefix("0x")
         {
             // FIXME: this could probably be done more efficiently then one digit at a time.
             let scale = DecimalDigit(T::one() << (4 * DecimalDigit::<T>::MAX_HEX_PLACES));
             let mut result = Self::zero();
-            for part in s[2..].as_bytes().rchunks(DecimalDigit::<T>::MAX_HEX_PLACES).rev()
+            for part in s.as_bytes().rchunks(DecimalDigit::<T>::MAX_HEX_PLACES).rev()
             {
                 let digit = DecimalDigit::<T>::from_hexadecimal_str(std::str::from_utf8(part).unwrap())?;
                 result.mul_add_assign_digit(scale, digit);

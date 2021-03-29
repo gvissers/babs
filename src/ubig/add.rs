@@ -29,16 +29,13 @@ where T: Digit + One + Zero
     {
         Some(digit)
     }
+    else if nr[0].add_assign(digit)
+    {
+        inc_assign(&mut nr[1..])
+    }
     else
     {
-        if nr[0].add_assign(digit)
-        {
-            inc_assign(&mut nr[1..])
-        }
-        else
-        {
-            None
-        }
+        None
     }
 }
 
