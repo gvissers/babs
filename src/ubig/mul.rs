@@ -5,7 +5,7 @@ use num_traits::Zero;
 /// and add the single digit `off` to the result. Return the carry on overflow, or `None` if the
 /// number does not overflow.
 pub fn mul_add_assign_digit<T>(nr: &mut [T], fac: T, off: T) -> Option<T>
-where T: Copy + Digit + Zero
+where T: Digit
 {
     let mut carry = off;
     for d in nr.iter_mut()
@@ -16,11 +16,50 @@ where T: Copy + Digit + Zero
     (!carry.is_zero()).then(|| carry)
 }
 
+/// Multiply the number or number part represented by the digits in `nr` by the two-digit number
+/// `fac_low+ b*fac_high`, where `b` is the base of the number, and add `offset` to it. Return
+/// the carry digits.
+pub fn mul_pair_add_assign_digit<T>(nr: &mut [T], fac_low: T, fac_high: T, offset: T) -> (T, T)
+where T: Digit
+{
+    if !nr.is_empty()
+    {
+        let mut prev = nr[0];
+        let mut carry0 = nr[0].mul_add_assign(fac_low, offset);
+        let mut add_one = false;
+        for i in 1..nr.len()
+        {
+            let new_prev = nr[i];
+
+            carry0 = prev.mul_add_assign(fac_high, carry0);
+            if add_one
+            {
+                add_one = carry0.inc();
+            }
+            let carry1 = nr[i].mul_add_assign(fac_low, prev);
+            add_one |= carry0.add_assign(carry1);
+
+            prev = new_prev;
+        }
+        carry0 = prev.mul_add_assign(fac_high, carry0);
+        if add_one
+        {
+            carry0.inc();
+        }
+
+        (prev, carry0)
+    }
+    else
+    {
+        (offset, T::zero())
+    }
+}
+
 #[cfg(test)]
 mod tests
 {
     use crate::digit::{BinaryDigit, DecimalDigit};
-    use super::mul_add_assign_digit;
+    use super::*;
 
     #[test]
     fn test_mul_add_assign_digit_binary()
@@ -118,5 +157,66 @@ mod tests
         let carry = mul_add_assign_digit(&mut nr, DecimalDigit(2_987), DecimalDigit(321_563_982));
         assert_eq!(nr, [DecimalDigit(413_310_383), DecimalDigit(964_155_623), DecimalDigit(12_844_099)]);
         assert_eq!(carry, None);
+    }
+
+    #[test]
+    fn test_mul_pair_add_assign_digit_decimal()
+    {
+        let mut nr: [DecimalDigit<u8>; 0] = [];
+        let carry = mul_pair_add_assign_digit(&mut nr, DecimalDigit(33), DecimalDigit(27), DecimalDigit(93));
+        assert_eq!(nr, []);
+        assert_eq!(carry, (DecimalDigit(93), DecimalDigit(0)));
+
+        let mut nr = [DecimalDigit(67u8)];
+        let carry = mul_pair_add_assign_digit(&mut nr, DecimalDigit(33), DecimalDigit(27), DecimalDigit(93));
+        assert_eq!(nr, [DecimalDigit(4)]);
+        assert_eq!(carry, (DecimalDigit(32), DecimalDigit(18)));
+
+        let mut nr = [DecimalDigit(99u8)];
+        let carry = mul_pair_add_assign_digit(&mut nr, DecimalDigit(99), DecimalDigit(99), DecimalDigit(99));
+        assert_eq!(nr, [DecimalDigit(0)]);
+        assert_eq!(carry, (DecimalDigit(0), DecimalDigit(99)));
+
+        let mut nr = [DecimalDigit(99u8), DecimalDigit(99)];
+        let carry = mul_pair_add_assign_digit(&mut nr, DecimalDigit(99), DecimalDigit(99), DecimalDigit(99));
+        assert_eq!(nr, [DecimalDigit(0), DecimalDigit(1)]);
+        assert_eq!(carry, (DecimalDigit(98), DecimalDigit(99)));
+
+        let mut nr = [
+            DecimalDigit(18u8),
+            DecimalDigit(0),
+            DecimalDigit(90),
+            DecimalDigit(71),
+            DecimalDigit(12),
+            DecimalDigit(28),
+            DecimalDigit(27),
+            DecimalDigit(7)
+        ];
+        let carry = mul_pair_add_assign_digit(&mut nr, DecimalDigit(23), DecimalDigit(67), DecimalDigit(92));
+        assert_eq!(nr, [
+            DecimalDigit(06),
+            DecimalDigit(11),
+            DecimalDigit(82),
+            DecimalDigit(83),
+            DecimalDigit(09),
+            DecimalDigit(99),
+            DecimalDigit(11),
+            DecimalDigit(95),
+        ]);
+        assert_eq!(carry, (DecimalDigit(88), DecimalDigit(4)));
+
+        let mut nr = [DecimalDigit(99u8); 8];
+        let carry = mul_pair_add_assign_digit(&mut nr, DecimalDigit(99), DecimalDigit(99), DecimalDigit(99));
+        assert_eq!(nr, [
+            DecimalDigit(0),
+            DecimalDigit(1),
+            DecimalDigit(99),
+            DecimalDigit(99),
+            DecimalDigit(99),
+            DecimalDigit(99),
+            DecimalDigit(99),
+            DecimalDigit(99)
+        ]);
+        assert_eq!(carry, (DecimalDigit(98), DecimalDigit(99)));
     }
 }

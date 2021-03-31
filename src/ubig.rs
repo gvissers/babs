@@ -65,6 +65,24 @@ impl<T> UBig<T>
         {
             self.digits.push(digit);
         }
+        self.drop_leading_zeros();
+    }
+
+    /// Multiply this number by the two-digit number `fac_low+b*fac_high`, where `b` is the base
+    /// of this number, and add digit `offset` to the result.
+    fn mul_pair_add_assign_digit(&mut self, fac_low: T, fac_high: T, offset: T)
+    where T: Digit
+    {
+        let (carry0, carry1) = mul::mul_pair_add_assign_digit(&mut self.digits, fac_low, fac_high, offset);
+        if !carry0.is_zero() || !carry1.is_zero()
+        {
+            self.digits.push(carry0);
+            if !carry1.is_zero()
+            {
+                self.digits.push(carry1);
+            }
+        }
+        self.drop_leading_zeros();
     }
 
     /// Add `other * b`<sup>`offset`</sup> to this number, where `b` is the base of this number.
@@ -96,7 +114,6 @@ impl<T> UBig<T>
 
         self
     }
-
 }
 
 impl<T> std::str::FromStr for UBig<BinaryDigit<T>>
@@ -452,9 +469,88 @@ where BinaryDigit<T>: Digit
     }
 }
 
+impl<T> std::ops::MulAssign<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    fn mul_assign(&mut self, n: T)
+    {
+        if DecimalDigit::fits_single(n)
+        {
+            *self *= DecimalDigit(n);
+        }
+        else
+        {
+            let (high, low) = DecimalDigit::split(n);
+            self.mul_pair_add_assign_digit(low, high, DecimalDigit::zero());
+        }
+    }
+}
 
+impl<T> std::ops::Mul<T> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn mul(self, digit: T) -> Self::Output
+    {
+        &self * digit
+    }
+}
 
+impl<T> std::ops::Mul<T> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn mul(self, digit: T) -> Self::Output
+    {
+        let mut product = self.clone();
+        product *= digit;
+        product
+    }
+}
 
+impl<T> std::ops::Mul<T> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    type Output = Self;
+    fn mul(self, digit: T) -> Self::Output
+    {
+        &self * digit
+    }
+}
+
+impl<T> std::ops::Mul<T> for &UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    type Output = UBig<BinaryDigit<T>>;
+    fn mul(self, digit: T) -> Self::Output
+    {
+        let mut product = self.clone();
+        product *= digit;
+        product
+    }
+}
+
+impl<T> std::ops::Mul<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = Self;
+    fn mul(self, digit: T) -> Self::Output
+    {
+        &self * digit
+    }
+}
+
+impl<T> std::ops::Mul<T> for &UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = UBig<DecimalDigit<T>>;
+    fn mul(self, digit: T) -> Self::Output
+    {
+        let mut product = self.clone();
+        product *= digit;
+        product
+    }
+}
 
 
 impl<T> std::ops::Mul<UBig<T>> for UBig<T>
