@@ -71,7 +71,7 @@ fn test_sub_digit_binary()
 #[should_panic]
 fn test_sub_digit_binary_underflow()
 {
-    let n = UBigBin32::from_str("0x32").unwrap() - 0x64;
+    let _n = UBigBin32::from_str("0x32").unwrap() - 0x64;
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn test_sub_digit_decimal()
 #[should_panic]
 fn test_sub_digit_decimal_underflow()
 {
-    let n = UBigDec32::from_str("101").unwrap() - 1003;
+    let _n = UBigDec32::from_str("101").unwrap() - 1003;
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn test_sub_big_binary()
 #[should_panic]
 fn test_sub_big_binary_underflow()
 {
-    let n = UBigBin32::from_str("0x1234567890123456").unwrap()
+    let _n = UBigBin32::from_str("0x1234567890123456").unwrap()
         - UBigBin32::from_str("0x1234567890123457").unwrap();
 }
 
@@ -213,6 +213,6 @@ fn test_sub_big_decimal()
 #[should_panic]
 fn test_sub_big_decimal_underflow()
 {
-    let n = UBigBin32::from_str("123456789012345678").unwrap()
+    let _n = UBigBin32::from_str("123456789012345678").unwrap()
         - UBigBin32::from_str("123456789012345679").unwrap();
 }

@@ -134,6 +134,25 @@ impl<T> UBig<T>
             Ok(self)
         }
     }
+
+    /// Multiply this number by `other` and return the result
+    pub fn mul_big(&self, other: &Self) -> Self
+    where T: Digit
+    {
+        if self.is_zero() || other.is_zero()
+        {
+            Self::zero()
+        }
+        else
+        {
+            let n0 = self.nr_digits();
+            let n1 = other.nr_digits();
+            let mut digits = vec![T::zero(); n0+n1];
+            let n = mul::mul_big_into(&self.digits, &other.digits(), &mut digits);
+            digits.truncate(n);
+            UBig { digits }
+        }
+    }
 }
 
 impl<T> std::str::FromStr for UBig<BinaryDigit<T>>
@@ -290,7 +309,7 @@ where T: Digit
 }
 
 impl<T> One for UBig<T>
-where T: One
+where T: Digit
 {
     fn one() -> Self
     {
@@ -506,6 +525,24 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     }
 }
 
+impl<T> std::ops::MulAssign<UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn mul_assign(&mut self, other: Self)
+    {
+        *self *= &other;
+    }
+}
+
+impl<T> std::ops::MulAssign<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn mul_assign(&mut self, other: &UBig<T>)
+    {
+        *self = &*self * other;
+    }
+}
+
 impl<T> std::ops::Mul<T> for UBig<T>
 where T: Digit
 {
@@ -569,6 +606,46 @@ where T: DigitStorage, DecimalDigit<T>: Digit
         let mut product = self.clone();
         product *= digit;
         product
+    }
+}
+
+impl<T> std::ops::Mul<UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn mul(self, other: UBig<T>) -> Self::Output
+    {
+        &self * &other
+    }
+}
+
+impl<T> std::ops::Mul<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn mul(self, other: &UBig<T>) -> Self::Output
+    {
+        &self * other
+    }
+}
+
+impl<T> std::ops::Mul<UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn mul(self, other: UBig<T>) -> Self::Output
+    {
+        self * &other
+    }
+}
+
+impl<T> std::ops::Mul<&UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn mul(self, other: &UBig<T>) -> Self::Output
+    {
+        self.mul_big(other)
     }
 }
 
@@ -746,15 +823,6 @@ where T: Digit
     }
 }
 
-
-impl<T> std::ops::Mul<UBig<T>> for UBig<T>
-{
-    type Output = Self;
-    fn mul(self, other: UBig<T>) -> Self
-    {
-        unimplemented!()
-    }
-}
 
 #[cfg(test)]
 mod test
