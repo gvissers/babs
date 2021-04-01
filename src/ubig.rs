@@ -1,8 +1,9 @@
 mod add;
 mod mul;
+mod sub;
 
 use crate::digit::{BinaryDigit, Digit, DigitStorage, DecimalDigit};
-use crate::result::Error;
+use crate::result::{Error, Result};
 use num_traits::{Zero, One};
 use std::fmt::Write;
 
@@ -57,11 +58,11 @@ impl<T> UBig<T>
         }
     }
 
-    /// Multiply this number by single digit `scale`, and add digit `offset` to the result
-    fn mul_add_assign_digit(&mut self, scale: T, offset: T)
+    /// Multiply this number by single digit `fac`, and add digit `offset` to the result
+    fn mul_add_assign_digit(&mut self, fac: T, offset: T)
     where T: Digit
     {
-        if let Some(digit) = mul::mul_add_assign_digit(&mut self.digits, scale, offset)
+        if let Some(digit) = mul::mul_add_assign_digit(&mut self.digits, fac, offset)
         {
             self.digits.push(digit);
         }
@@ -114,6 +115,25 @@ impl<T> UBig<T>
 
         self
     }
+
+    /// Subtract `other * b`<sup>`offset`</sup> from this number, where `b` is the base of this
+    /// number. Returns an `Underflow` error when `other > self`.
+    fn sub_assign_big_at_offset(&mut self, other: &Self, offset: usize) -> Result<&mut Self>
+    where T: Digit
+    {
+        let n0 = self.nr_digits();
+        let n1 = other.nr_digits();
+        if n0 < n1 + offset
+            || sub::sub_assign_big(&mut self.digits[offset..], &other.digits).is_some()
+        {
+            Err(Error::Underflow)
+        }
+        else
+        {
+            self.drop_leading_zeros();
+            Ok(self)
+        }
+    }
 }
 
 impl<T> std::str::FromStr for UBig<BinaryDigit<T>>
@@ -121,7 +141,7 @@ where T: DigitStorage, BinaryDigit<T>: Digit
 {
     type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err>
+    fn from_str(s: &str) -> Result<Self>
     {
         if !s.is_ascii()
         {
@@ -158,7 +178,7 @@ where T: DigitStorage, DecimalDigit<T>: Digit
 {
     type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err>
+    fn from_str(s: &str) -> Result<Self>
     {
         if !s.is_ascii()
         {
@@ -549,6 +569,180 @@ where T: DigitStorage, DecimalDigit<T>: Digit
         let mut product = self.clone();
         product *= digit;
         product
+    }
+}
+
+
+impl<T> std::ops::SubAssign<T> for UBig<T>
+where T: Digit
+{
+    fn sub_assign(&mut self, digit: T)
+    {
+        if sub::sub_assign_digit(&mut self.digits, digit).is_some()
+        {
+            panic!("Failed to subtract: {}", Error::Underflow);
+        }
+        self.drop_leading_zeros();
+    }
+}
+
+impl<T> std::ops::SubAssign<T> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    fn sub_assign(&mut self, digit: T)
+    {
+        *self -= BinaryDigit(digit);
+    }
+}
+
+impl<T> std::ops::SubAssign<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    fn sub_assign(&mut self, n: T)
+    {
+        if DecimalDigit::fits_single(n)
+        {
+            *self -= DecimalDigit(n);
+        }
+        else
+        {
+            let (high, low) = DecimalDigit::split(n);
+            *self -= low;
+            if sub::sub_assign_digit(&mut self.digits[1..], high).is_some()
+            {
+                panic!("Failed to subtract: {}", Error::Underflow);
+            }
+            self.drop_leading_zeros();
+        }
+    }
+}
+
+impl<T> std::ops::SubAssign<UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn sub_assign(&mut self, other: UBig<T>)
+    {
+        *self -= &other;
+    }
+}
+
+impl<T> std::ops::SubAssign<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn sub_assign(&mut self, other: &UBig<T>)
+    {
+        if let Err(err) = self.sub_assign_big_at_offset(other, 0)
+        {
+            panic!("Failed to subtract: {}", err);
+        }
+    }
+}
+
+impl<T> std::ops::Sub<T> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn sub(self, digit: T) -> Self::Output
+    {
+        &self - digit
+    }
+}
+
+impl<T> std::ops::Sub<T> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn sub(self, digit: T) -> Self::Output
+    {
+        let mut difference = self.clone();
+        difference -= digit;
+        difference
+    }
+}
+
+impl<T> std::ops::Sub<T> for UBig<BinaryDigit<T>>
+where T: DigitStorage, BinaryDigit<T>: Digit
+{
+    type Output = Self;
+    fn sub(self, digit: T) -> Self::Output
+    {
+        &self - digit
+    }
+}
+
+impl<T> std::ops::Sub<T> for &UBig<BinaryDigit<T>>
+where T: DigitStorage, BinaryDigit<T>: Digit
+{
+    type Output = UBig<BinaryDigit<T>>;
+    fn sub(self, digit: T) -> Self::Output
+    {
+        let mut difference = self.clone();
+        difference -= digit;
+        difference
+    }
+}
+
+impl<T> std::ops::Sub<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = Self;
+    fn sub(self, digit: T) -> Self::Output
+    {
+        &self - digit
+    }
+}
+
+impl<T> std::ops::Sub<T> for &UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = UBig<DecimalDigit<T>>;
+    fn sub(self, digit: T) -> Self::Output
+    {
+        let mut difference = self.clone();
+        difference -= digit;
+        difference
+    }
+}
+
+impl<T> std::ops::Sub<UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn sub(self, other: UBig<T>) -> Self::Output
+    {
+        &self - &other
+    }
+}
+
+impl<T> std::ops::Sub<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn sub(self, other: &UBig<T>) -> Self::Output
+    {
+        &self - other
+    }
+}
+
+impl<T> std::ops::Sub<UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn sub(self, other: UBig<T>) -> Self::Output
+    {
+        self - &other
+    }
+}
+
+impl<T> std::ops::Sub<&UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn sub(self, other: &UBig<T>) -> Self::Output
+    {
+        let mut difference = self.clone();
+        difference -= other;
+        difference
     }
 }
 

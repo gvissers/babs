@@ -52,10 +52,17 @@ pub trait Digit:
     /// Increment this number by one, wrapping around to zero on overflow. Returns `true` on
     /// overflow, `false` otherwise.
     fn inc(&mut self) -> bool;
+    /// Decrement this number by one, wrapping around to zero on underflow. Returns `true` on
+    /// underflow, `false` otherwise.
+    fn dec(&mut self) -> bool;
 
     /// Add `other` to this digit, wrapping around to zero on overflow. Returns `true` on overflow,
     /// `false` otherwise.
     fn add_assign(&mut self, other: Self) -> bool;
+    /// Subtract `other` from this digit, wrapping around to zero on underflow. Returns `true` on
+    /// underflow, `false` otherwise.
+    fn sub_assign(&mut self, other: Self) -> bool;
+
     /// Multiply this digit by `fac` and add `off`. The lower part of the result is stored in `self`,
     /// the upper part is returned as carry.
     fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self;
@@ -94,9 +101,23 @@ macro_rules! impl_digit_binary
                 overflow
             }
 
+            fn dec(&mut self) -> bool
+            {
+                let (n, underflow) = self.0.overflowing_sub(1);
+                self.0 = n;
+                underflow
+            }
+
             fn add_assign(&mut self, other: Self) -> bool
             {
                 let (n, overflow) = self.0.overflowing_add(other.0);
+                self.0 = n;
+                overflow
+            }
+
+            fn sub_assign(&mut self, other: Self) -> bool
+            {
+                let (n, overflow) = self.0.overflowing_sub(other.0);
                 self.0 = n;
                 overflow
             }
@@ -215,6 +236,20 @@ macro_rules! impl_digit_decimal
                 }
             }
 
+            fn dec(&mut self) -> bool
+            {
+                if self.0 == 0
+                {
+                    self.0 = <$dt>::DECIMAL_RADIX - 1;
+                    true
+                }
+                else
+                {
+                    self.0 -= 1;
+                    false
+                }
+            }
+
             fn add_assign(&mut self, other: Self) -> bool
             {
                 self.0 += other.0;
@@ -225,6 +260,20 @@ macro_rules! impl_digit_decimal
                 }
                 else
                 {
+                    false
+                }
+            }
+
+            fn sub_assign(&mut self, other: Self) -> bool
+            {
+                if self.0 < other.0
+                {
+                    self.0 += <$dt>::DECIMAL_RADIX - other.0;
+                    true
+                }
+                else
+                {
+                    self.0 -= other.0;
                     false
                 }
             }
@@ -370,6 +419,84 @@ mod tests
     }
 
     #[test]
+    fn test_dec_binary()
+    {
+        let mut d = BinaryDigit(1u8);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, BinaryDigit(0));
+
+        let mut d = BinaryDigit(0xffu8);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, BinaryDigit(0xfe));
+
+        let mut d = BinaryDigit(0u8);
+        let underflow = d.dec();
+        assert!(underflow);
+        assert_eq!(d, BinaryDigit(0xff));
+
+        let mut d = BinaryDigit(0x100u16);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, BinaryDigit(0xff));
+
+        let mut d = BinaryDigit(0u16);
+        let underflow = d.dec();
+        assert!(underflow);
+        assert_eq!(d, BinaryDigit(0xffff));
+
+        let mut d = BinaryDigit(0x100000u32);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, BinaryDigit(0xfffff));
+
+        let mut d = BinaryDigit(0u32);
+        let underflow = d.dec();
+        assert!(underflow);
+        assert_eq!(d, BinaryDigit(0xffffffff));
+    }
+
+    #[test]
+    fn test_dec_decimal()
+    {
+        let mut d = DecimalDigit(1u8);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, DecimalDigit(0));
+
+        let mut d = DecimalDigit(99u8);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, DecimalDigit(98));
+
+        let mut d = DecimalDigit(0u8);
+        let underflow = d.dec();
+        assert!(underflow);
+        assert_eq!(d, DecimalDigit(99));
+
+        let mut d = DecimalDigit(100u16);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, DecimalDigit(99));
+
+        let mut d = DecimalDigit(0u16);
+        let underflow = d.dec();
+        assert!(underflow);
+        assert_eq!(d, DecimalDigit(9_999));
+
+        let mut d = DecimalDigit(100_000_000u32);
+        let underflow = d.dec();
+        assert!(!underflow);
+        assert_eq!(d, DecimalDigit(99_999_999));
+
+        let mut d = DecimalDigit(0u32);
+        let underflow = d.dec();
+        assert!(underflow);
+        assert_eq!(d, DecimalDigit(999_999_999));
+    }
+
+    #[test]
     fn test_add_assign_binary()
     {
         let mut d = BinaryDigit(0u8);
@@ -455,6 +582,94 @@ mod tests
         let overflow = d.add_assign(DecimalDigit(999_781_234));
         assert!(overflow);
         assert_eq!(d, DecimalDigit(782_468));
+    }
+
+    #[test]
+    fn test_sub_assign_binary()
+    {
+        let mut d = BinaryDigit(47u8);
+        let overflow = d.add_assign(BinaryDigit(0));
+        assert!(!overflow);
+        assert_eq!(d, BinaryDigit(47));
+
+        let mut d = BinaryDigit(0x80u8);
+        let overflow = d.sub_assign(BinaryDigit(0x7f));
+        assert!(!overflow);
+        assert_eq!(d, BinaryDigit(1));
+
+        let mut d = BinaryDigit(0x7fu8);
+        let overflow = d.sub_assign(BinaryDigit(0x80));
+        assert!(overflow);
+        assert_eq!(d, BinaryDigit(0xff));
+
+        let mut d = BinaryDigit(0x80u8);
+        let overflow = d.sub_assign(BinaryDigit(0x85));
+        assert!(overflow);
+        assert_eq!(d, BinaryDigit(0xfb));
+
+        let mut d = BinaryDigit(0xff00u16);
+        let overflow = d.sub_assign(BinaryDigit(0x80));
+        assert!(!overflow);
+        assert_eq!(d, BinaryDigit(0xfe80));
+
+        let mut d = BinaryDigit(0x8000u16);
+        let overflow = d.sub_assign(BinaryDigit(0xff00));
+        assert!(overflow);
+        assert_eq!(d, BinaryDigit(0x8100));
+
+        let mut d = BinaryDigit(0xff001180u32);
+        let overflow = d.sub_assign(BinaryDigit(0xff001100));
+        assert!(!overflow);
+        assert_eq!(d, BinaryDigit(0x80));
+
+        let mut d = BinaryDigit(0x7fab2468u32);
+        let overflow = d.sub_assign(BinaryDigit(0xffab1234));
+        assert!(overflow);
+        assert_eq!(d, BinaryDigit(0x80001234));
+    }
+
+    #[test]
+    fn test_sub_assign_decimal()
+    {
+        let mut d = DecimalDigit(47u8);
+        let overflow = d.sub_assign(DecimalDigit(0));
+        assert!(!overflow);
+        assert_eq!(d, DecimalDigit(47));
+
+        let mut d = DecimalDigit(99u8);
+        let overflow = d.sub_assign(DecimalDigit(49));
+        assert!(!overflow);
+        assert_eq!(d, DecimalDigit(50));
+
+        let mut d = DecimalDigit(0u8);
+        let overflow = d.sub_assign(DecimalDigit(50));
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(50));
+
+        let mut d = DecimalDigit(5u8);
+        let overflow = d.sub_assign(DecimalDigit(55));
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(50));
+
+        let mut d = DecimalDigit(9_950u16);
+        let overflow = d.sub_assign(DecimalDigit(9_900));
+        assert!(!overflow);
+        assert_eq!(d, DecimalDigit(50));
+
+        let mut d = DecimalDigit(4_900u16);
+        let overflow = d.sub_assign(DecimalDigit(9_900));
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(5_000));
+
+        let mut d = DecimalDigit(999_001_150u32);
+        let overflow = d.sub_assign(DecimalDigit(999_001_100));
+        assert!(!overflow);
+        assert_eq!(d, DecimalDigit(50));
+
+        let mut d = DecimalDigit(782_468u32);
+        let overflow = d.sub_assign(DecimalDigit(999_781_234));
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(1_001_234));
     }
 
     #[test]

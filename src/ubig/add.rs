@@ -70,7 +70,7 @@ where T: Digit
 mod tests
 {
     use crate::digit::{DecimalDigit, BinaryDigit};
-    use super::{add_assign_big, add_assign_digit, inc_assign};
+    use super::*;
 
     #[test]
     fn test_inc_assign_binary()
