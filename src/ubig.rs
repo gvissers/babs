@@ -1,5 +1,6 @@
 mod add;
 mod mul;
+mod shl;
 mod sub;
 
 use crate::digit::{BinaryDigit, Digit, DigitStorage, DecimalDigit};
@@ -41,6 +42,34 @@ impl<T> UBig<T>
         &self.digits
     }
 
+    /// Raise this number to the power `exp`, and return the result
+    pub fn pow(&self, exp: usize) -> Self
+    where T: Digit
+    {
+        match exp
+        {
+            0 => Self::one(),
+            1 => self.clone(),
+//             2 => self.square(),
+            _ => {
+                let mut result = if exp % 2 == 0 { Self::one() } else { self.clone() };
+                let mut power = self.clone();
+                let mut n = exp / 2;
+                while n > 0
+                {
+//                     power = power.square();
+                    power = &power * &power;
+                    if n % 2 != 0
+                    {
+                        result *= &power;
+                    }
+                    n >>= 1;
+                }
+                result
+            }
+        }
+    }
+
     /// Remove leading zero from this number, if any
     fn drop_leading_zeros(&mut self)
     where T: Zero
@@ -56,34 +85,6 @@ impl<T> UBig<T>
                 break;
             }
         }
-    }
-
-    /// Multiply this number by single digit `fac`, and add digit `offset` to the result
-    fn mul_add_assign_digit(&mut self, fac: T, offset: T)
-    where T: Digit
-    {
-        if let Some(digit) = mul::mul_add_assign_digit(&mut self.digits, fac, offset)
-        {
-            self.digits.push(digit);
-        }
-        self.drop_leading_zeros();
-    }
-
-    /// Multiply this number by the two-digit number `fac_low+b*fac_high`, where `b` is the base
-    /// of this number, and add digit `offset` to the result.
-    fn mul_pair_add_assign_digit(&mut self, fac_low: T, fac_high: T, offset: T)
-    where T: Digit
-    {
-        let (carry0, carry1) = mul::mul_pair_add_assign_digit(&mut self.digits, fac_low, fac_high, offset);
-        if !carry0.is_zero() || !carry1.is_zero()
-        {
-            self.digits.push(carry0);
-            if !carry1.is_zero()
-            {
-                self.digits.push(carry1);
-            }
-        }
-        self.drop_leading_zeros();
     }
 
     /// Add `other * b`<sup>`offset`</sup> to this number, where `b` is the base of this number.
@@ -135,8 +136,36 @@ impl<T> UBig<T>
         }
     }
 
+    /// Multiply this number by single digit `fac`, and add digit `offset` to the result
+    fn mul_add_assign_digit(&mut self, fac: T, offset: T)
+    where T: Digit
+    {
+        if let Some(digit) = mul::mul_add_assign_digit(&mut self.digits, fac, offset)
+        {
+            self.digits.push(digit);
+        }
+        self.drop_leading_zeros();
+    }
+
+    /// Multiply this number by the two-digit number `fac_low+b*fac_high`, where `b` is the base
+    /// of this number, and add digit `offset` to the result.
+    fn mul_pair_add_assign_digit(&mut self, fac_low: T, fac_high: T, offset: T)
+    where T: Digit
+    {
+        let (carry0, carry1) = mul::mul_pair_add_assign_digit(&mut self.digits, fac_low, fac_high, offset);
+        if !carry0.is_zero() || !carry1.is_zero()
+        {
+            self.digits.push(carry0);
+            if !carry1.is_zero()
+            {
+                self.digits.push(carry1);
+            }
+        }
+        self.drop_leading_zeros();
+    }
+
     /// Multiply this number by `other` and return the result
-    pub fn mul_big(&self, other: &Self) -> Self
+    fn mul_big(&self, other: &Self) -> Self
     where T: Digit
     {
         if self.is_zero() || other.is_zero()
@@ -646,6 +675,70 @@ where T: Digit
     fn mul(self, other: &UBig<T>) -> Self::Output
     {
         self.mul_big(other)
+    }
+}
+
+
+impl<T> std::ops::ShlAssign<usize> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    fn shl_assign(&mut self, n: usize)
+    {
+        let (high, low) = (n / BinaryDigit::<T>::NR_BITS, n % BinaryDigit::<T>::NR_BITS);
+        if low != 0
+        {
+            if let Some(carry) = shl::shl_add_assign_within_digit(&mut self.digits, low, BinaryDigit::zero())
+            {
+                self.digits.push(carry);
+            }
+        }
+        if high != 0
+        {
+            self.digits.splice(..0, std::iter::repeat(BinaryDigit::zero()).take(high));
+        }
+    }
+}
+
+impl<T> std::ops::ShlAssign<usize> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    fn shl_assign(&mut self, n: usize)
+    {
+        if n <= 4 * DecimalDigit::<T>::MAX_HEX_PLACES
+        {
+            if let Some(carry) = shl::shl_add_assign_within_digit(&mut self.digits, n, DecimalDigit::zero())
+            {
+                self.digits.push(carry);
+            }
+        }
+        else
+        {
+            let two = UBig::one() + UBig::one();
+            let scale = two.pow(n);
+            *self *= scale;
+        }
+    }
+}
+
+impl<T> std::ops::Shl<usize> for UBig<T>
+where T: Digit, UBig<T>: std::ops::ShlAssign<usize>
+{
+    type Output = Self;
+    fn shl(self, n: usize) -> Self::Output
+    {
+        &self << n
+    }
+}
+
+impl<T> std::ops::Shl<usize> for &UBig<T>
+where T: Digit, UBig<T>: std::ops::ShlAssign<usize>
+{
+    type Output = UBig<T>;
+    fn shl(self, n: usize) -> Self::Output
+    {
+        let mut shifted = self.clone();
+        shifted <<= n;
+        shifted
     }
 }
 
