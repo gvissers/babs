@@ -28,7 +28,7 @@ where T: Digit
     {
         Some(digit)
     }
-    else if nr[0].sub_assign(digit)
+    else if nr[0].sub_carry_assign(digit, false)
     {
         dec_assign(&mut nr[1..])
     }
@@ -49,11 +49,7 @@ where T: Digit
     let mut carry = false;
     for (d0, &d1) in nr0.iter_mut().zip(nr1)
     {
-        if carry
-        {
-            carry = d0.dec();
-        }
-        carry |= d0.sub_assign(d1)
+        carry = d0.sub_carry_assign(d1, carry);
     }
 
     if carry

@@ -56,12 +56,12 @@ pub trait Digit:
     /// underflow, `false` otherwise.
     fn dec(&mut self) -> bool;
 
-    /// Add `other` to this digit, wrapping around to zero on overflow. Returns `true` on overflow,
-    /// `false` otherwise.
-    fn add_assign(&mut self, other: Self) -> bool;
-    /// Subtract `other` from this digit, wrapping around to zero on underflow. Returns `true` on
-    /// underflow, `false` otherwise.
-    fn sub_assign(&mut self, other: Self) -> bool;
+    /// Add `other` + `carry` to this digit, wrapping around to zero on overflow. Returns `true`
+    /// on overflow, `false` otherwise.
+    fn add_carry_assign(&mut self, other: Self, carry: bool) -> bool;
+    /// Subtract `other` + `carry` from this digit, wrapping around to zero on underflow. Returns
+    /// `true` on underflow, `false` otherwise.
+    fn sub_carry_assign(&mut self, other: Self, carry: bool) -> bool;
 
     /// Shift this digit left by `shift` bits, and add `off` to the result. The carry `off` must
     /// fit in  `shift` bits, which in turn must be smaller than the bit width of the digit, i.e.
@@ -122,19 +122,21 @@ macro_rules! impl_digit_binary
             }
 
             #[inline]
-            fn add_assign(&mut self, other: Self) -> bool
+            fn add_carry_assign(&mut self, other: Self, carry: bool) -> bool
             {
-                let (n, overflow) = self.0.overflowing_add(other.0);
+                let (n, overflow0) = self.0.overflowing_add(other.0);
+                let (n, overflow1) = n.overflowing_add(carry as $dt);
                 self.0 = n;
-                overflow
+                overflow0 || overflow1
             }
 
             #[inline]
-            fn sub_assign(&mut self, other: Self) -> bool
+            fn sub_carry_assign(&mut self, other: Self, carry: bool) -> bool
             {
-                let (n, overflow) = self.0.overflowing_sub(other.0);
+                let (n, underflow0) = self.0.overflowing_sub(other.0);
+                let (n, underflow1) = n.overflowing_sub(carry as $dt);
                 self.0 = n;
-                overflow
+                underflow0 || underflow1
             }
 
             #[inline]
@@ -291,9 +293,9 @@ macro_rules! impl_digit_decimal
             }
 
             #[inline]
-            fn add_assign(&mut self, other: Self) -> bool
+            fn add_carry_assign(&mut self, other: Self, carry: bool) -> bool
             {
-                self.0 += other.0;
+                self.0 += other.0 + carry as $dt;
                 if self.0 >= <$dt>::DECIMAL_RADIX
                 {
                     self.0 -= <$dt>::DECIMAL_RADIX;
@@ -306,16 +308,17 @@ macro_rules! impl_digit_decimal
             }
 
             #[inline]
-            fn sub_assign(&mut self, other: Self) -> bool
+            fn sub_carry_assign(&mut self, other: Self, carry: bool) -> bool
             {
-                if self.0 < other.0
+                let diff = other.0 + carry as $dt;
+                if self.0 < diff
                 {
-                    self.0 += <$dt>::DECIMAL_RADIX - other.0;
+                    self.0 += <$dt>::DECIMAL_RADIX - diff;
                     true
                 }
                 else
                 {
-                    self.0 -= other.0;
+                    self.0 -= diff;
                     false
                 }
             }
@@ -556,179 +559,204 @@ mod tests
     }
 
     #[test]
-    fn test_add_assign_binary()
+    fn test_add_carry_assign_binary()
     {
         let mut d = BinaryDigit(0u8);
-        let overflow = d.add_assign(BinaryDigit(47));
+        let overflow = d.add_carry_assign(BinaryDigit(47), false);
         assert!(!overflow);
         assert_eq!(d, BinaryDigit(47));
 
         let mut d = BinaryDigit(0x80u8);
-        let overflow = d.add_assign(BinaryDigit(0x7f));
+        let overflow = d.add_carry_assign(BinaryDigit(0x7f), false);
         assert!(!overflow);
         assert_eq!(d, BinaryDigit(0xff));
 
         let mut d = BinaryDigit(0x80u8);
-        let overflow = d.add_assign(BinaryDigit(0x80));
+        let overflow = d.add_carry_assign(BinaryDigit(0x7f), true);
         assert!(overflow);
         assert_eq!(d, BinaryDigit(0));
 
         let mut d = BinaryDigit(0x80u8);
-        let overflow = d.add_assign(BinaryDigit(0x85));
+        let overflow = d.add_carry_assign(BinaryDigit(0x80), false);
         assert!(overflow);
-        assert_eq!(d, BinaryDigit(5));
+        assert_eq!(d, BinaryDigit(0));
+
+        let mut d = BinaryDigit(0x80u8);
+        let overflow = d.add_carry_assign(BinaryDigit(0x85), true);
+        assert!(overflow);
+        assert_eq!(d, BinaryDigit(6));
 
         let mut d = BinaryDigit(0x80u16);
-        let overflow = d.add_assign(BinaryDigit(0xff00));
+        let overflow = d.add_carry_assign(BinaryDigit(0xff00), true);
         assert!(!overflow);
-        assert_eq!(d, BinaryDigit(0xff80));
+        assert_eq!(d, BinaryDigit(0xff81));
 
         let mut d = BinaryDigit(0x8000u16);
-        let overflow = d.add_assign(BinaryDigit(0xff00));
+        let overflow = d.add_carry_assign(BinaryDigit(0xff00), false);
         assert!(overflow);
         assert_eq!(d, BinaryDigit(0x7f00));
 
         let mut d = BinaryDigit(0x80u32);
-        let overflow = d.add_assign(BinaryDigit(0xff001100));
+        let overflow = d.add_carry_assign(BinaryDigit(0xff001100), false);
         assert!(!overflow);
         assert_eq!(d, BinaryDigit(0xff001180));
 
         let mut d = BinaryDigit(0x80001234u32);
-        let overflow = d.add_assign(BinaryDigit(0xffab1234));
+        let overflow = d.add_carry_assign(BinaryDigit(0xffab1234), true);
         assert!(overflow);
-        assert_eq!(d, BinaryDigit(0x7fab2468));
+        assert_eq!(d, BinaryDigit(0x7fab2469));
     }
 
     #[test]
-    fn test_add_assign_decimal()
+    fn test_add_carry_assign_decimal()
     {
         let mut d = DecimalDigit(0u8);
-        let overflow = d.add_assign(DecimalDigit(47));
+        let overflow = d.add_carry_assign(DecimalDigit(47), false);
         assert!(!overflow);
         assert_eq!(d, DecimalDigit(47));
 
         let mut d = DecimalDigit(50u8);
-        let overflow = d.add_assign(DecimalDigit(49));
+        let overflow = d.add_carry_assign(DecimalDigit(49), false);
         assert!(!overflow);
         assert_eq!(d, DecimalDigit(99));
 
         let mut d = DecimalDigit(50u8);
-        let overflow = d.add_assign(DecimalDigit(50));
+        let overflow = d.add_carry_assign(DecimalDigit(49), true);
         assert!(overflow);
         assert_eq!(d, DecimalDigit(0));
 
         let mut d = DecimalDigit(50u8);
-        let overflow = d.add_assign(DecimalDigit(55));
+        let overflow = d.add_carry_assign(DecimalDigit(50), false);
         assert!(overflow);
-        assert_eq!(d, DecimalDigit(5));
+        assert_eq!(d, DecimalDigit(0));
+
+        let mut d = DecimalDigit(50u8);
+        let overflow = d.add_carry_assign(DecimalDigit(55), true);
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(6));
 
         let mut d = DecimalDigit(50u16);
-        let overflow = d.add_assign(DecimalDigit(9_900));
+        let overflow = d.add_carry_assign(DecimalDigit(9_900), true);
         assert!(!overflow);
-        assert_eq!(d, DecimalDigit(9_950));
+        assert_eq!(d, DecimalDigit(9_951));
 
         let mut d = DecimalDigit(5000u16);
-        let overflow = d.add_assign(DecimalDigit(9_900));
+        let overflow = d.add_carry_assign(DecimalDigit(9_900), false);
         assert!(overflow);
         assert_eq!(d, DecimalDigit(4_900));
 
         let mut d = DecimalDigit(50u32);
-        let overflow = d.add_assign(DecimalDigit(999_001_100));
+        let overflow = d.add_carry_assign(DecimalDigit(999_001_100), false);
         assert!(!overflow);
         assert_eq!(d, DecimalDigit(999_001_150));
 
         let mut d = DecimalDigit(1_001_234u32);
-        let overflow = d.add_assign(DecimalDigit(999_781_234));
+        let overflow = d.add_carry_assign(DecimalDigit(999_781_234), true);
         assert!(overflow);
-        assert_eq!(d, DecimalDigit(782_468));
+        assert_eq!(d, DecimalDigit(782_469));
     }
 
     #[test]
-    fn test_sub_assign_binary()
+    fn test_sub_carry_assign_binary()
     {
         let mut d = BinaryDigit(47u8);
-        let overflow = d.add_assign(BinaryDigit(0));
+        let overflow = d.sub_carry_assign(BinaryDigit(0), false);
         assert!(!overflow);
         assert_eq!(d, BinaryDigit(47));
 
         let mut d = BinaryDigit(0x80u8);
-        let overflow = d.sub_assign(BinaryDigit(0x7f));
+        let overflow = d.sub_carry_assign(BinaryDigit(0x7f), false);
         assert!(!overflow);
         assert_eq!(d, BinaryDigit(1));
 
+        let mut d = BinaryDigit(0x80u8);
+        let overflow = d.sub_carry_assign(BinaryDigit(0x7f), true);
+        assert!(!overflow);
+        assert_eq!(d, BinaryDigit(0));
+
+        let mut d = BinaryDigit(0x80u8);
+        let overflow = d.sub_carry_assign(BinaryDigit(0x80), true);
+        assert!(overflow);
+        assert_eq!(d, BinaryDigit(0xff));
+
         let mut d = BinaryDigit(0x7fu8);
-        let overflow = d.sub_assign(BinaryDigit(0x80));
+        let overflow = d.sub_carry_assign(BinaryDigit(0x80), false);
         assert!(overflow);
         assert_eq!(d, BinaryDigit(0xff));
 
         let mut d = BinaryDigit(0x80u8);
-        let overflow = d.sub_assign(BinaryDigit(0x85));
+        let overflow = d.sub_carry_assign(BinaryDigit(0x85), true);
         assert!(overflow);
-        assert_eq!(d, BinaryDigit(0xfb));
+        assert_eq!(d, BinaryDigit(0xfa));
 
         let mut d = BinaryDigit(0xff00u16);
-        let overflow = d.sub_assign(BinaryDigit(0x80));
+        let overflow = d.sub_carry_assign(BinaryDigit(0x80), false);
         assert!(!overflow);
         assert_eq!(d, BinaryDigit(0xfe80));
 
         let mut d = BinaryDigit(0x8000u16);
-        let overflow = d.sub_assign(BinaryDigit(0xff00));
+        let overflow = d.sub_carry_assign(BinaryDigit(0xff00), true);
         assert!(overflow);
-        assert_eq!(d, BinaryDigit(0x8100));
+        assert_eq!(d, BinaryDigit(0x80ff));
 
         let mut d = BinaryDigit(0xff001180u32);
-        let overflow = d.sub_assign(BinaryDigit(0xff001100));
+        let overflow = d.sub_carry_assign(BinaryDigit(0xff001100), false);
         assert!(!overflow);
         assert_eq!(d, BinaryDigit(0x80));
 
         let mut d = BinaryDigit(0x7fab2468u32);
-        let overflow = d.sub_assign(BinaryDigit(0xffab1234));
+        let overflow = d.sub_carry_assign(BinaryDigit(0xffab1234), true);
         assert!(overflow);
-        assert_eq!(d, BinaryDigit(0x80001234));
+        assert_eq!(d, BinaryDigit(0x80001233));
     }
 
     #[test]
-    fn test_sub_assign_decimal()
+    fn test_sub_carry_assign_decimal()
     {
         let mut d = DecimalDigit(47u8);
-        let overflow = d.sub_assign(DecimalDigit(0));
+        let overflow = d.sub_carry_assign(DecimalDigit(0), false);
         assert!(!overflow);
         assert_eq!(d, DecimalDigit(47));
 
         let mut d = DecimalDigit(99u8);
-        let overflow = d.sub_assign(DecimalDigit(49));
+        let overflow = d.sub_carry_assign(DecimalDigit(49), false);
         assert!(!overflow);
         assert_eq!(d, DecimalDigit(50));
 
+        let mut d = DecimalDigit(99u8);
+        let overflow = d.sub_carry_assign(DecimalDigit(99), true);
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(99));
+
         let mut d = DecimalDigit(0u8);
-        let overflow = d.sub_assign(DecimalDigit(50));
+        let overflow = d.sub_carry_assign(DecimalDigit(50), false);
         assert!(overflow);
         assert_eq!(d, DecimalDigit(50));
 
         let mut d = DecimalDigit(5u8);
-        let overflow = d.sub_assign(DecimalDigit(55));
+        let overflow = d.sub_carry_assign(DecimalDigit(55), true);
         assert!(overflow);
-        assert_eq!(d, DecimalDigit(50));
+        assert_eq!(d, DecimalDigit(49));
 
         let mut d = DecimalDigit(9_950u16);
-        let overflow = d.sub_assign(DecimalDigit(9_900));
+        let overflow = d.sub_carry_assign(DecimalDigit(9_900), false);
         assert!(!overflow);
         assert_eq!(d, DecimalDigit(50));
 
         let mut d = DecimalDigit(4_900u16);
-        let overflow = d.sub_assign(DecimalDigit(9_900));
+        let overflow = d.sub_carry_assign(DecimalDigit(9_900), true);
         assert!(overflow);
-        assert_eq!(d, DecimalDigit(5_000));
+        assert_eq!(d, DecimalDigit(4_999));
 
         let mut d = DecimalDigit(999_001_150u32);
-        let overflow = d.sub_assign(DecimalDigit(999_001_100));
+        let overflow = d.sub_carry_assign(DecimalDigit(999_001_100), false);
         assert!(!overflow);
         assert_eq!(d, DecimalDigit(50));
 
         let mut d = DecimalDigit(782_468u32);
-        let overflow = d.sub_assign(DecimalDigit(999_781_234));
+        let overflow = d.sub_carry_assign(DecimalDigit(999_781_234), true);
         assert!(overflow);
-        assert_eq!(d, DecimalDigit(1_001_234));
+        assert_eq!(d, DecimalDigit(1_001_233));
     }
 
     #[test]

@@ -39,7 +39,7 @@ where T: Digit
                 add_one = carry0.inc();
             }
             let carry1 = d.mul_add_assign(fac_low, prev);
-            add_one |= carry0.add_assign(carry1);
+            add_one |= carry0.add_carry_assign(carry1, false);
 
             prev = new_prev;
         }

@@ -28,7 +28,7 @@ where T: Digit
     {
         Some(digit)
     }
-    else if nr[0].add_assign(digit)
+    else if nr[0].add_carry_assign(digit, false)
     {
         inc_assign(&mut nr[1..])
     }
@@ -49,11 +49,7 @@ where T: Digit
     let mut carry = false;
     for (d0, &d1) in nr0.iter_mut().zip(nr1)
     {
-        if carry
-        {
-            carry = d0.inc();
-        }
-        carry |= d0.add_assign(d1)
+        carry = d0.add_carry_assign(d1, carry);
     }
 
     if carry
@@ -83,11 +79,7 @@ where T: Digit
     for ((&d0, &d1), dr) in nr0.iter().zip(nr1).zip(sum.iter_mut())
     {
         *dr = d0;
-        if carry
-        {
-            carry = dr.inc();
-        }
-        carry |= dr.add_assign(d1);
+        carry = dr.add_carry_assign(d1, carry);
     }
 
     match n0.cmp(&n1)
