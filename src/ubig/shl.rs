@@ -10,7 +10,7 @@ where T: Digit
     let mut carry = off;
     for d in nr.iter_mut()
     {
-        carry = d.shl_add_assign(shift, carry);
+        carry = d.shl_carry_assign(shift, carry);
     }
     (!carry.is_zero()).then(|| carry)
 }

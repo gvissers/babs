@@ -19,7 +19,7 @@ where T: Digit
 }
 
 /// Multiply the number or number part represented by the digits in `nr` by the two-digit number
-/// `fac_low+ b*fac_high`, where `b` is the base of the number, and add `offset` to it. Return
+/// `fac_low + b*fac_high`, where `b` is the base of the number, and add `offset` to it. Return
 /// the carry digits.
 pub fn mul_pair_add_assign_digit<T>(nr: &mut [T], fac_low: T, fac_high: T, offset: T) -> (T, T)
 where T: Digit

@@ -63,11 +63,11 @@ pub trait Digit:
     /// `true` on underflow, `false` otherwise.
     fn sub_carry_assign(&mut self, other: Self, carry: bool) -> bool;
 
-    /// Shift this digit left by `shift` bits, and add `off` to the result. The carry `off` must
+    /// Shift this digit left by `shift` bits, and add `carry` to the result. The carry `carry` must
     /// fit in  `shift` bits, which in turn must be smaller than the bit width of the digit, i.e.
     /// `off` < 2<sup>`n`</sup> < `b`, where `b` is the base of the digit. Returns the carry after
     /// the left shift.
-    fn shl_add_assign(&mut self, shift: usize, off: Self) -> Self;
+    fn shl_carry_assign(&mut self, shift: usize, carry: Self) -> Self;
 
     /// Multiply this digit by `fac` and add `off`. The lower part of the result is stored in `self`,
     /// the upper part is returned as carry.
@@ -140,7 +140,7 @@ macro_rules! impl_digit_binary
             }
 
             #[inline]
-            fn shl_add_assign(&mut self, shift: usize, off: Self) -> Self
+            fn shl_carry_assign(&mut self, shift: usize, off: Self) -> Self
             {
                 let carry = self.0 >> (Self::NR_BITS - shift);
                 self.0 = (self.0 << shift) | off.0;
@@ -324,7 +324,7 @@ macro_rules! impl_digit_decimal
             }
 
             #[inline]
-            fn shl_add_assign(&mut self, shift: usize, off: Self) -> Self
+            fn shl_carry_assign(&mut self, shift: usize, off: Self) -> Self
             {
                 let tmp = (self.0 as $wdt) << shift;
                 self.0 = (tmp % <$dt>::DECIMAL_RADIX as $wdt) as $dt + off.0;
@@ -760,79 +760,79 @@ mod tests
     }
 
     #[test]
-    fn test_shl_add_assign_binary()
+    fn test_shl_carry_assign_binary()
     {
         let mut d = BinaryDigit(0u8);
-        let carry = d.shl_add_assign(5, BinaryDigit(0x10));
+        let carry = d.shl_carry_assign(5, BinaryDigit(0x10));
         assert_eq!(d, BinaryDigit(0x10));
         assert_eq!(carry, BinaryDigit(0));
 
         let mut d = BinaryDigit(0x43u8);
-        let carry = d.shl_add_assign(5, BinaryDigit(0x10));
+        let carry = d.shl_carry_assign(5, BinaryDigit(0x10));
         assert_eq!(d, BinaryDigit(0x70));
         assert_eq!(carry, BinaryDigit(0x08));
 
         let mut d = BinaryDigit(0xffu8);
-        let carry = d.shl_add_assign(3, BinaryDigit(0x07));
+        let carry = d.shl_carry_assign(3, BinaryDigit(0x07));
         assert_eq!(d, BinaryDigit(0xff));
         assert_eq!(carry, BinaryDigit(0x07));
 
         let mut d = BinaryDigit(0xffu16);
-        let carry = d.shl_add_assign(3, BinaryDigit(0x07));
+        let carry = d.shl_carry_assign(3, BinaryDigit(0x07));
         assert_eq!(d, BinaryDigit(0x7ff));
         assert_eq!(carry, BinaryDigit(0));
 
         let mut d = BinaryDigit(0xa3b4u16);
-        let carry = d.shl_add_assign(11, BinaryDigit(0x83));
+        let carry = d.shl_carry_assign(11, BinaryDigit(0x83));
         assert_eq!(d, BinaryDigit(0xa083));
         assert_eq!(carry, BinaryDigit(0x051d));
 
         let mut d = BinaryDigit(0xa3b4u32);
-        let carry = d.shl_add_assign(11, BinaryDigit(0x83));
+        let carry = d.shl_carry_assign(11, BinaryDigit(0x83));
         assert_eq!(d, BinaryDigit(0x051da083));
         assert_eq!(carry, BinaryDigit(0));
 
         let mut d = BinaryDigit(0x7f99a3b4u32);
-        let carry = d.shl_add_assign(21, BinaryDigit(0x21483));
+        let carry = d.shl_carry_assign(21, BinaryDigit(0x21483));
         assert_eq!(d, BinaryDigit(0x76821483));
         assert_eq!(carry, BinaryDigit(0x000ff334));
     }
 
     #[test]
-    fn test_shl_add_assign_decimal()
+    fn test_shl_carry_assign_decimal()
     {
         let mut d = DecimalDigit(0u8);
-        let carry = d.shl_add_assign(5, DecimalDigit(10));
+        let carry = d.shl_carry_assign(5, DecimalDigit(10));
         assert_eq!(d, DecimalDigit(10));
         assert_eq!(carry, DecimalDigit(0));
 
         let mut d = DecimalDigit(43u8);
-        let carry = d.shl_add_assign(5, DecimalDigit(10));
+        let carry = d.shl_carry_assign(5, DecimalDigit(10));
         assert_eq!(d, DecimalDigit(86));
         assert_eq!(carry, DecimalDigit(13));
 
         let mut d = DecimalDigit(99u8);
-        let carry = d.shl_add_assign(3, DecimalDigit(7));
+        let carry = d.shl_carry_assign(3, DecimalDigit(7));
         assert_eq!(d, DecimalDigit(99));
         assert_eq!(carry, DecimalDigit(7));
 
         let mut d = DecimalDigit(99u16);
-        let carry = d.shl_add_assign(3, DecimalDigit(7));
+        let carry = d.shl_carry_assign(3, DecimalDigit(7));
         assert_eq!(d, DecimalDigit(799));
         assert_eq!(carry, DecimalDigit(0));
 
         let mut d = DecimalDigit(9_281u16);
-        let carry = d.shl_add_assign(11, DecimalDigit(83));
+        let carry = d.shl_carry_assign(11, DecimalDigit(83));
         assert_eq!(d, DecimalDigit(7_571));
         assert_eq!(carry, DecimalDigit(1_900));
 
         let mut d = DecimalDigit(9_281u32);
-        let carry = d.shl_add_assign(11, DecimalDigit(83));
+        let carry = d.shl_carry_assign(11, DecimalDigit(83));
         assert_eq!(d, DecimalDigit(19_007_571));
         assert_eq!(carry, DecimalDigit(0));
 
         let mut d = DecimalDigit(781_187_923u32);
-        let carry = d.shl_add_assign(21, DecimalDigit(27872));
+        let carry = d.shl_carry_assign(21, DecimalDigit(27872));
         assert_eq!(d, DecimalDigit(815_123_168));
         assert_eq!(carry, DecimalDigit(1_638_269));
     }
