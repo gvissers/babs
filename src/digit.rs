@@ -94,12 +94,14 @@ macro_rules! impl_digit_binary
         {
             const MAX: Self = BinaryDigit(<$dt>::max_value());
 
+            #[inline]
             fn from_base_str(s: &str, base: u32) -> Result<Self>
             {
                 let d = <$dt>::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
                 Ok(BinaryDigit(d))
             }
 
+            #[inline]
             fn inc(&mut self) -> bool
             {
                 let (n, overflow) = self.0.overflowing_add(1);
@@ -107,6 +109,7 @@ macro_rules! impl_digit_binary
                 overflow
             }
 
+            #[inline]
             fn dec(&mut self) -> bool
             {
                 let (n, underflow) = self.0.overflowing_sub(1);
@@ -114,6 +117,7 @@ macro_rules! impl_digit_binary
                 underflow
             }
 
+            #[inline]
             fn add_assign(&mut self, other: Self) -> bool
             {
                 let (n, overflow) = self.0.overflowing_add(other.0);
@@ -121,6 +125,7 @@ macro_rules! impl_digit_binary
                 overflow
             }
 
+            #[inline]
             fn sub_assign(&mut self, other: Self) -> bool
             {
                 let (n, overflow) = self.0.overflowing_sub(other.0);
@@ -128,6 +133,7 @@ macro_rules! impl_digit_binary
                 overflow
             }
 
+            #[inline]
             fn shl_add_assign(&mut self, shift: usize, off: Self) -> Self
             {
                 let carry = self.0 >> (Self::NR_BITS - shift);
@@ -135,6 +141,7 @@ macro_rules! impl_digit_binary
                 BinaryDigit(carry)
             }
 
+            #[inline]
             fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
             {
                 let tmp = self.0 as $wdt * fac.0 as $wdt + off.0 as $wdt;
@@ -222,6 +229,7 @@ macro_rules! impl_digit_decimal
         {
             const MAX: Self = DecimalDigit(<$dt>::DECIMAL_RADIX - 1);
 
+            #[inline]
             fn from_base_str(s: &str, base: u32) -> Result<Self>
             {
                 let d = <$dt>::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
@@ -235,6 +243,7 @@ macro_rules! impl_digit_decimal
                 }
             }
 
+            #[inline]
             fn inc(&mut self) -> bool
             {
                 if self.0 == <$dt>::DECIMAL_RADIX - 1
@@ -249,6 +258,7 @@ macro_rules! impl_digit_decimal
                 }
             }
 
+            #[inline]
             fn dec(&mut self) -> bool
             {
                 if self.0 == 0
@@ -263,6 +273,7 @@ macro_rules! impl_digit_decimal
                 }
             }
 
+            #[inline]
             fn add_assign(&mut self, other: Self) -> bool
             {
                 self.0 += other.0;
@@ -277,6 +288,7 @@ macro_rules! impl_digit_decimal
                 }
             }
 
+            #[inline]
             fn sub_assign(&mut self, other: Self) -> bool
             {
                 if self.0 < other.0
@@ -291,6 +303,7 @@ macro_rules! impl_digit_decimal
                 }
             }
 
+            #[inline]
             fn shl_add_assign(&mut self, shift: usize, off: Self) -> Self
             {
                 let tmp = (self.0 as $wdt) << shift;
@@ -298,6 +311,7 @@ macro_rules! impl_digit_decimal
                 DecimalDigit((tmp / <$dt>::DECIMAL_RADIX as $wdt) as $dt)
             }
 
+            #[inline]
             fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
             {
                 let tmp = self.0 as $wdt * fac.0 as $wdt + off.0 as $wdt;
