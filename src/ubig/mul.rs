@@ -91,7 +91,7 @@ where T: Digit
 /// process, and store the result in `product`. The result array must have space for at least
 /// `n0+n1` digits,  where `n0` denotes the number of digits in `nr0`, and `n1` the number of digits
 /// in `nr1`. Returns the number of digits in the product.
-pub fn mul_big_into_with_work<T>(nr0: &[T], nr1: &[T], product: &mut [T], work: &mut [T]) -> usize
+fn mul_big_into_with_work<T>(nr0: &[T], nr1: &[T], product: &mut [T], work: &mut [T]) -> usize
 where T: Digit
 {
     if nr0.is_empty() || nr1.is_empty()
@@ -130,13 +130,9 @@ where T: Digit
     for (offset, &d1) in nr1.iter().enumerate()
     {
         let mut carry = T::zero();
-        for (mut d0, rd) in nr0.iter().copied().zip(&mut result[offset..])
+        for (&d0, rd) in nr0.iter().zip(&mut result[offset..])
         {
-            carry = d0.mul_add_assign(d1, carry);
-            if rd.add_assign(d0)
-            {
-                carry.inc();
-            }
+            carry = rd.add_prod_carry_assign(d0, d1, carry);
         }
         result[offset+n0] = carry;
     }

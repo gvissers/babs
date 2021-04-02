@@ -72,6 +72,10 @@ pub trait Digit:
     /// Multiply this digit by `fac` and add `off`. The lower part of the result is stored in `self`,
     /// the upper part is returned as carry.
     fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self;
+
+    /// Add the product of `fac0` and `fac1`, as well as the carry `carry` to this digit, and
+    /// return the new carry.
+    fn add_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -148,6 +152,14 @@ macro_rules! impl_digit_binary
                 self.0 = (tmp & Self::MAX.0 as $wdt) as $dt;
                 BinaryDigit((tmp >> Self::NR_BITS) as $dt)
             }
+
+            #[inline]
+            fn add_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self
+            {
+                let tmp = self.0 as $wdt + fac0.0 as $wdt * fac1.0 as $wdt + carry.0 as $wdt;
+                self.0 = (tmp & Self::MAX.0 as $wdt) as $dt;
+                BinaryDigit((tmp >> Self::NR_BITS) as $dt)
+            }
         }
     }
 }
@@ -159,11 +171,13 @@ impl_digit_binary!(u32, u64);
 impl<T> num_traits::Zero for BinaryDigit<T>
 where T: num_traits::Zero
 {
+    #[inline]
     fn zero() -> Self
     {
         BinaryDigit(T::zero())
     }
 
+    #[inline]
     fn is_zero(&self) -> bool
     {
         self.0.is_zero()
@@ -173,6 +187,7 @@ where T: num_traits::Zero
 impl<T> num_traits::One for BinaryDigit<T>
 where T: num_traits::One
 {
+    #[inline]
     fn one() -> Self
     {
         BinaryDigit(T::one())
@@ -211,11 +226,13 @@ where T: DigitStorage
     pub const MAX_HEX_PLACES: usize = 2 * std::mem::size_of::<T>() - 1;
 
     /// Return whether a value of the underlying storage type fits into a single decimal digit
+    #[inline]
     pub fn fits_single(d: T) -> bool
     {
         d < T::DECIMAL_RADIX
     }
     /// Split a value of the underlying storage type that is greater than the radix into separate digits
+    #[inline]
     pub fn split(d: T) -> (Self, Self)
     {
         (DecimalDigit(d / T::DECIMAL_RADIX), DecimalDigit(d % T::DECIMAL_RADIX))
@@ -315,6 +332,14 @@ macro_rules! impl_digit_decimal
             fn mul_add_assign(&mut self, fac: Self, off: Self) -> Self
             {
                 let tmp = self.0 as $wdt * fac.0 as $wdt + off.0 as $wdt;
+                self.0 = (tmp % <$dt>::DECIMAL_RADIX as $wdt) as $dt;
+                DecimalDigit((tmp / <$dt>::DECIMAL_RADIX as $wdt) as $dt)
+            }
+
+            #[inline]
+            fn add_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self
+            {
+                let tmp = self.0 as $wdt + fac0.0 as $wdt * fac1.0 as $wdt + carry.0 as $wdt;
                 self.0 = (tmp % <$dt>::DECIMAL_RADIX as $wdt) as $dt;
                 DecimalDigit((tmp / <$dt>::DECIMAL_RADIX as $wdt) as $dt)
             }
@@ -910,5 +935,83 @@ mod tests
         let carry = d.mul_add_assign(DecimalDigit(999_999_999), DecimalDigit(999_999_999));
         assert_eq!(d, DecimalDigit(0));
         assert_eq!(carry, DecimalDigit(999_999_999));
+    }
+
+    #[test]
+    fn test_add_prod_carry_assign_binary()
+    {
+        // digit, fac0, fac1, carry, new digit, new carry
+        let cases = [
+            (0x37u8, 0x00, 0xff, 0x00, 0x37, 0x00),
+            (0x37u8, 0x00, 0xff, 0x23, 0x5a, 0x00),
+            (0x37u8, 0xff, 0x00, 0x23, 0x5a, 0x00),
+            (0xffu8, 0x21, 0x34, 0xac, 0x5f, 0x08),
+            (0x23u8, 0xff, 0xff, 0x73, 0x97, 0xfe)
+        ];
+        for (idx, case) in cases.iter().enumerate()
+        {
+            let mut d = BinaryDigit(case.0);
+            let carry = d.add_prod_carry_assign(BinaryDigit(case.1), BinaryDigit(case.2),
+                BinaryDigit(case.3));
+            assert_eq!(d, BinaryDigit(case.4), "wrong digit in u8 case {}", idx+1);
+            assert_eq!(carry, BinaryDigit(case.5), "wrong carry in u8 case {}", idx+1);
+        }
+
+        // digit, fac0, fac1, carry, new digit, new carry
+        let cases = [
+            (0x37u32, 0x00, 0xff, 0x00, 0x37, 0x00),
+            (0x37u32, 0x00, 0xff, 0x23, 0x5a, 0x00),
+            (0xffu32, 0x21, 0x34, 0xac, 0x85f, 0x00),
+            (0x23u32, 0xff, 0xff, 0x73, 0xfe97, 0x00),
+            (0x716172cdu32, 0xf2413551, 0x82988190, 0xacd820ed, 0x08dd624a, 0x7b956e67),
+            (0xffffffffu32, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff)
+        ];
+        for (idx, case) in cases.iter().enumerate()
+        {
+            let mut d = BinaryDigit(case.0);
+            let carry = d.add_prod_carry_assign(BinaryDigit(case.1), BinaryDigit(case.2),
+                BinaryDigit(case.3));
+            assert_eq!(d, BinaryDigit(case.4), "wrong digit in u32 case {}", idx+1);
+            assert_eq!(carry, BinaryDigit(case.5), "wrong carry in u32 case {}", idx+1);
+        }
+    }
+
+    #[test]
+    fn test_add_prod_carry_assign_decimal()
+    {
+        // digit, fac0, fac1, carry, new digit, new carry
+        let cases = [
+            (37u8, 00, 99, 00, 37,  0),
+            (37u8, 00, 99, 23, 60,  0),
+            (37u8, 99, 00, 23, 60,  0),
+            (99u8, 21, 34, 75, 88,  8),
+            (23u8, 99, 99, 73, 97, 98)
+        ];
+        for (idx, case) in cases.iter().enumerate()
+        {
+            let mut d = DecimalDigit(case.0);
+            let carry = d.add_prod_carry_assign(DecimalDigit(case.1), DecimalDigit(case.2),
+                DecimalDigit(case.3));
+            assert_eq!(d, DecimalDigit(case.4), "wrong digit in u8 case {}", idx+1);
+            assert_eq!(carry, DecimalDigit(case.5), "wrong carry in u8 case {}", idx+1);
+        }
+
+        // digit, fac0, fac1, carry, new digit, new carry
+        let cases = [
+            (37u32, 00, 99, 00, 37, 0),
+            (37u32, 00, 99, 23, 60, 0),
+            (99u32, 21, 34, 75, 888, 0),
+            (23u32, 99, 99, 73, 9_897, 0),
+            (983_109_582, 338_928_191, 233_922_929, 982_192_889, 124_693_910, 79_283_077),
+            (999_999_999u32, 999_999_999, 999_999_999, 999_999_999, 999_999_999, 999_999_999)
+        ];
+        for (idx, case) in cases.iter().enumerate()
+        {
+            let mut d = DecimalDigit(case.0);
+            let carry = d.add_prod_carry_assign(DecimalDigit(case.1), DecimalDigit(case.2),
+                DecimalDigit(case.3));
+            assert_eq!(d, DecimalDigit(case.4), "wrong digit in u32 case {}", idx+1);
+            assert_eq!(carry, DecimalDigit(case.5), "wrong carry in u32 case {}", idx+1);
+        }
     }
 }
