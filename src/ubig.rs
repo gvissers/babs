@@ -96,7 +96,7 @@ impl<T> UBig<T>
         if n0 <= offset
         {
             self.digits.extend(std::iter::repeat(T::zero()).take(offset - n0));
-            self.digits.extend(&other.digits);
+            self.digits.extend_from_slice(&other.digits);
         }
         else if n1 <= n0 - offset
         {
@@ -107,7 +107,7 @@ impl<T> UBig<T>
         }
         else
         {
-            self.digits.extend(&other.digits[n0-offset..]);
+            self.digits.extend_from_slice(&other.digits[n0-offset..]);
             if let Some(carry) = add::add_assign_big(&mut self.digits[offset..], &other.digits[..n0-offset])
             {
                 self.digits.push(carry);
@@ -358,6 +358,14 @@ where T: DigitStorage + std::fmt::UpperHex
                 f.pad_integral(true, "0x", &s)
             }
         }
+    }
+}
+
+impl<T> std::fmt::Display for UBig<BinaryDigit<T>>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        write!(f, "<unimplemented>")
     }
 }
 
