@@ -184,6 +184,66 @@ impl<T> UBig<T>
     }
 }
 
+impl<T> Zero for UBig<T>
+where T: Digit
+{
+    fn zero() -> Self
+    {
+        UBig { digits: vec![] }
+    }
+
+    fn is_zero(&self) -> bool
+    {
+        self.digits.is_empty()
+    }
+}
+
+impl<T> One for UBig<T>
+where T: Digit
+{
+    fn one() -> Self
+    {
+        UBig { digits: vec![T::one()] }
+    }
+}
+
+impl<T> From<T> for UBig<BinaryDigit<T>>
+where T: Zero, BinaryDigit<T>: Digit
+{
+    fn from(n: T) -> Self
+    {
+        if n.is_zero()
+        {
+            UBig::zero()
+        }
+        else
+        {
+            UBig { digits: vec![BinaryDigit(n)] }
+        }
+    }
+}
+
+impl<T> From<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    fn from(n: T) -> Self
+    {
+        if n.is_zero()
+        {
+            UBig::zero()
+        }
+        else if DecimalDigit::fits_single(n)
+        {
+            UBig { digits: vec![DecimalDigit(n)] }
+        }
+        else
+        {
+            let (high, low) = DecimalDigit::split(n);
+            UBig { digits: vec![low, high] }
+        }
+    }
+}
+
 impl<T> std::str::FromStr for UBig<BinaryDigit<T>>
 where T: DigitStorage, BinaryDigit<T>: Digit
 {
@@ -320,29 +380,6 @@ where T: DigitStorage + std::fmt::Display
                 f.pad_integral(true, "", &s)
             }
         }
-    }
-}
-
-impl<T> Zero for UBig<T>
-where T: Digit
-{
-    fn zero() -> Self
-    {
-        UBig { digits: vec![] }
-    }
-
-    fn is_zero(&self) -> bool
-    {
-        self.digits.is_empty()
-    }
-}
-
-impl<T> One for UBig<T>
-where T: Digit
-{
-    fn one() -> Self
-    {
-        UBig { digits: vec![T::one()] }
     }
 }
 
@@ -981,6 +1018,59 @@ mod test
 
         let n = UBig::<DecimalDigit<u8>>::one();
         assert_eq!(n.digits(), &[DecimalDigit(1)]);
+    }
+
+    #[test]
+    fn test_from_digit_binary()
+    {
+        let n = UBig::<BinaryDigit<u8>>::from(0);
+        assert_eq!(n.digits(), &[]);
+
+        let n = UBig::<BinaryDigit<u8>>::from(0x7f);
+        assert_eq!(n.digits(), &[BinaryDigit(0x7f)]);
+
+        let n = UBig::<BinaryDigit<u16>>::from(0);
+        assert_eq!(n.digits(), &[]);
+
+        let n = UBig::<BinaryDigit<u16>>::from(0xf37f);
+        assert_eq!(n.digits(), &[BinaryDigit(0xf37f)]);
+
+        let n = UBig::<BinaryDigit<u32>>::from(0);
+        assert_eq!(n.digits(), &[]);
+
+        let n = UBig::<BinaryDigit<u32>>::from(0x12345678);
+        assert_eq!(n.digits(), &[BinaryDigit(0x12345678)]);
+    }
+
+    #[test]
+    fn test_from_digit_decimal()
+    {
+        let n = UBig::<DecimalDigit<u8>>::from(0);
+        assert_eq!(n.digits(), &[]);
+
+        let n = UBig::<DecimalDigit<u8>>::from(57);
+        assert_eq!(n.digits(), &[DecimalDigit(57)]);
+
+        let n = UBig::<DecimalDigit<u8>>::from(204);
+        assert_eq!(n.digits(), &[DecimalDigit(4), DecimalDigit(2)]);
+
+        let n = UBig::<DecimalDigit<u16>>::from(0);
+        assert_eq!(n.digits(), &[]);
+
+        let n = UBig::<DecimalDigit<u16>>::from(7_352);
+        assert_eq!(n.digits(), &[DecimalDigit(7_352)]);
+
+        let n = UBig::<DecimalDigit<u16>>::from(25_352);
+        assert_eq!(n.digits(), &[DecimalDigit(5_352), DecimalDigit(2)]);
+
+        let n = UBig::<DecimalDigit<u32>>::from(0);
+        assert_eq!(n.digits(), &[]);
+
+        let n = UBig::<DecimalDigit<u32>>::from(237_651_987);
+        assert_eq!(n.digits(), &[DecimalDigit(237_651_987)]);
+
+        let n = UBig::<DecimalDigit<u32>>::from(3_237_651_987);
+        assert_eq!(n.digits(), &[DecimalDigit(237_651_987), DecimalDigit(3)]);
     }
 
     #[test]
