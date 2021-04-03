@@ -2,7 +2,7 @@ use crate::result::{Error, Result};
 
 /// Trait for the underlying type of a digit
 pub trait DigitStorage:
-      Clone + Copy + PartialOrd
+      Clone + Copy + Eq + Ord
     + num_traits::One
     + num_traits::Zero
     + num_traits::Pow<usize, Output=Self>
@@ -29,7 +29,7 @@ impl DigitStorage for u32
 
 /// Trait for a type that can be used as a digit in a big number
 pub trait Digit:
-      Clone + Copy
+      Clone + Copy + Eq + Ord
     + num_traits::One
     + num_traits::Zero
 {
@@ -78,7 +78,7 @@ pub trait Digit:
     fn add_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct BinaryDigit<T>(pub T);
 
 impl<T> BinaryDigit<T>
@@ -216,7 +216,7 @@ where T: std::ops::Mul<Output=T>
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct DecimalDigit<T>(pub T);
 
 impl<T> DecimalDigit<T>

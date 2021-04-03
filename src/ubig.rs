@@ -11,7 +11,7 @@ use std::fmt::Write;
 /// Structure describing a big number as a series of digits. The base of the number is determined
 /// by the digit type `T`. The digits are stored in little-endian order, i.e. the least significant
 /// digit is the first.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UBig<T>
 {
     /// The digits making up the umber
@@ -360,6 +360,25 @@ where T: DigitStorage + std::fmt::Display
                 f.pad_integral(true, "", &s)
             }
         }
+    }
+}
+
+impl<T> PartialOrd for UBig<T>
+where T: Eq + Ord
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering>
+    {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for UBig<T>
+where T: Eq + Ord
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering
+    {
+        self.nr_digits().cmp(&other.nr_digits())
+            .then_with(|| self.digits.iter().rev().cmp(other.digits.iter().rev()))
     }
 }
 

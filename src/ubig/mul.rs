@@ -1,6 +1,6 @@
 use crate::digit::Digit;
 
-/// The minimum size of a number (in digits) for Karatsuba multiplication. Should be at leats 4.
+/// The minimum size of a number (in digits) for Karatsuba multiplication. Should be at least 4.
 const KARATSUBA_CUTOFF: usize = 16;
 
 /// Multiply the number or number part represented by the digits in `nr` by the single digit `fac`,
@@ -205,7 +205,6 @@ where T: Digit
     }
     n
 }
-
 
 #[cfg(test)]
 mod tests
