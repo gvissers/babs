@@ -1,5 +1,5 @@
 use babs::{UBigBin8, UBigDec8, UBigBin32, UBigDec32};
-use num_traits::Zero;
+use num_traits::{Pow, Zero};
 use std::str::FromStr;
 
 #[test]

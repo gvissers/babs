@@ -5,7 +5,7 @@ mod sub;
 
 use crate::digit::{BinaryDigit, Digit, DigitStorage, DecimalDigit};
 use crate::result::{Error, Result};
-use num_traits::{Zero, One};
+use num_traits::{Zero, One, Pow};
 use std::fmt::Write;
 
 /// Structure describing a big number as a series of digits. The base of the number is determined
@@ -40,34 +40,6 @@ impl<T> UBig<T>
     pub fn digits(&self) -> &[T]
     {
         &self.digits
-    }
-
-    /// Raise this number to the power `exp`, and return the result
-    pub fn pow(&self, exp: usize) -> Self
-    where T: Digit
-    {
-        match exp
-        {
-            0 => Self::one(),
-            1 => self.clone(),
-//             2 => self.square(),
-            _ => {
-                let mut result = if exp % 2 == 0 { Self::one() } else { self.clone() };
-                let mut power = self.clone();
-                let mut n = exp / 2;
-                while n > 0
-                {
-//                     power = power.square();
-                    power = &power * &power;
-                    if n % 2 != 0
-                    {
-                        result *= &power;
-                    }
-                    n >>= 1;
-                }
-                result
-            }
-        }
     }
 
     /// Remove leading zero from this number, if any
@@ -961,6 +933,46 @@ where T: Digit
     }
 }
 
+impl<T> num_traits::Pow<usize> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn pow(self, exp: usize) -> Self::Output
+    {
+        (&self).pow(exp)
+    }
+}
+
+impl<T> num_traits::Pow<usize> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn pow(self, exp: usize) -> Self::Output
+    {
+        match exp
+        {
+            0 => UBig::one(),
+            1 => self.clone(),
+//             2 => self.square(),
+            _ => {
+                let mut result = if exp % 2 == 0 { UBig::one() } else { self.clone() };
+                let mut power = self.clone();
+                let mut n = exp / 2;
+                while n > 0
+                {
+//                     power = power.square();
+                    power = &power * &power;
+                    if n % 2 != 0
+                    {
+                        result *= &power;
+                    }
+                    n >>= 1;
+                }
+                result
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod test
