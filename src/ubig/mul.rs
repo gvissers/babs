@@ -12,7 +12,7 @@ where T: Digit
     let mut carry = off;
     for d in nr.iter_mut()
     {
-        carry = d.mul_add_assign(fac, carry);
+        carry = d.mul_carry_assign(fac, carry);
     }
 
     (!carry.is_zero()).then(|| carry)
@@ -27,23 +27,23 @@ where T: Digit
     if !nr.is_empty()
     {
         let mut prev = nr[0];
-        let mut carry0 = nr[0].mul_add_assign(fac_low, offset);
+        let mut carry0 = nr[0].mul_carry_assign(fac_low, offset);
         let mut add_one = false;
         for d in nr[1..].iter_mut()
         {
             let new_prev = *d;
 
-            carry0 = prev.mul_add_assign(fac_high, carry0);
+            carry0 = prev.mul_carry_assign(fac_high, carry0);
             if add_one
             {
                 add_one = carry0.inc();
             }
-            let carry1 = d.mul_add_assign(fac_low, prev);
+            let carry1 = d.mul_carry_assign(fac_low, prev);
             add_one |= carry0.add_carry_assign(carry1, false);
 
             prev = new_prev;
         }
-        carry0 = prev.mul_add_assign(fac_high, carry0);
+        carry0 = prev.mul_carry_assign(fac_high, carry0);
         if add_one
         {
             carry0.inc();

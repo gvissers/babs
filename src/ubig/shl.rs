@@ -4,7 +4,7 @@ use crate::digit::Digit;
 /// result. The carry `off` must fit in  `shift` bits, which in turn must be smaller than the bit
 /// width of the digit, i.e. `off` < 2<sup>`n`</sup> < `b`, where `b` is the base of the number.
 /// Returns the carry after the left shift.
-pub fn shl_add_assign_within_digit<T>(nr: &mut [T], shift: usize, off: T) -> Option<T>
+pub fn shl_add_assign_within_digit<T>(nr: &mut [T], shift: usize, off: T) -> T
 where T: Digit
 {
     let mut carry = off;
@@ -12,7 +12,7 @@ where T: Digit
     {
         carry = d.shl_carry_assign(shift, carry);
     }
-    (!carry.is_zero()).then(|| carry)
+    carry
 }
 
 #[cfg(test)]
@@ -27,12 +27,12 @@ mod tests
         let mut n: [BinaryDigit<u32>; 0] = [];
         let carry = shl_add_assign_within_digit(&mut n, 15, BinaryDigit(0x7fff));
         assert_eq!(n, []);
-        assert_eq!(carry, Some(BinaryDigit(0x7fff)));
+        assert_eq!(carry, BinaryDigit(0x7fff));
 
         let mut n = [BinaryDigit(0x06725412u32), BinaryDigit(0x16fadefe), BinaryDigit(0x61c14ad4)];
         let carry = shl_add_assign_within_digit(&mut n, 15, BinaryDigit(0x7fff));
         assert_eq!(n, [BinaryDigit(0x2a097fff), BinaryDigit(0x6f7f0339), BinaryDigit(0xa56a0b7d)]);
-        assert_eq!(carry, Some(BinaryDigit(0x30e0)));
+        assert_eq!(carry, BinaryDigit(0x30e0));
 
         let mut n = [
             BinaryDigit(0x5412u16),
@@ -51,7 +51,7 @@ mod tests
             BinaryDigit(0x0b7d),
             BinaryDigit(0xa56a)
         ]);
-        assert_eq!(carry, Some(BinaryDigit(0x30e0)));
+        assert_eq!(carry, BinaryDigit(0x30e0));
     }
 
     #[test]
@@ -60,12 +60,12 @@ mod tests
         let mut n: [DecimalDigit<u32>; 0] = [];
         let carry = shl_add_assign_within_digit(&mut n, 15, DecimalDigit(9_999));
         assert_eq!(n, []);
-        assert_eq!(carry, Some(DecimalDigit(9_999)));
+        assert_eq!(carry, DecimalDigit(9_999));
 
         let mut n = [DecimalDigit(826_211_332u32), DecimalDigit(187_721_198), DecimalDigit(987_365_181)];
         let carry = shl_add_assign_within_digit(&mut n, 15, DecimalDigit(9_999));
         assert_eq!(n, [DecimalDigit(292_936_975), DecimalDigit(248_243_137), DecimalDigit(982_257_159)]);
-        assert_eq!(carry, Some(DecimalDigit(32_353)));
+        assert_eq!(carry, DecimalDigit(32_353));
 
         let mut n = [
             DecimalDigit(1_332u16),
@@ -86,6 +86,6 @@ mod tests
             DecimalDigit(8_910),
             DecimalDigit(2_123)
         ]);
-        assert_eq!(carry, Some(DecimalDigit(202)));
+        assert_eq!(carry, DecimalDigit(202));
     }
 }

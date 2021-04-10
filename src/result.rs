@@ -5,7 +5,9 @@ pub enum Error
     /// Invalid number denotation
     InvalidNumber,
     /// Underflow when subtracting big numbers
-    Underflow
+    Underflow,
+    /// Attempt to divide by zero
+    DivisionByZero
 }
 
 impl std::fmt::Display for Error
@@ -14,8 +16,9 @@ impl std::fmt::Display for Error
     {
         match self
         {
-            Error::InvalidNumber => write!(f, "Invalid number"),
-            Error::Underflow     => write!(f, "Underflow")
+            Error::InvalidNumber  => write!(f, "Invalid number"),
+            Error::Underflow      => write!(f, "Underflow"),
+            Error::DivisionByZero => write!(f, "Division by zero")
         }
     }
 }
