@@ -34,7 +34,7 @@ where T: Digit
             {
                 let carry = den_low.shl_carry_assign(shift, T::zero());
                 den_high.shl_carry_assign(shift, carry);
-                rem_high = crate::ubig::shl::shl_add_assign_within_digit(nr, shift, T::zero());
+                rem_high = crate::ubig::shl::shl_carry_assign_within_digit(nr, shift, T::zero());
             }
             let mut rem_low = std::mem::replace(&mut nr[n-1], T::zero());
 

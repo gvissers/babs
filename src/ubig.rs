@@ -2,6 +2,7 @@ mod add;
 mod div;
 mod mul;
 mod shl;
+mod shr;
 mod sub;
 
 use crate::digit::{BinaryDigit, Digit, DigitStorage, DecimalDigit};
@@ -866,7 +867,7 @@ where BinaryDigit<T>: Digit
         let (high, low) = (n / BinaryDigit::<T>::NR_BITS, n % BinaryDigit::<T>::NR_BITS);
         if low != 0
         {
-            let carry = shl::shl_add_assign_within_digit(&mut self.digits, low, BinaryDigit::zero());
+            let carry = shl::shl_carry_assign_within_digit(&mut self.digits, low, BinaryDigit::zero());
             if !carry.is_zero()
             {
                 self.digits.push(carry);
@@ -886,7 +887,7 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     {
         if n <= 4 * DecimalDigit::<T>::MAX_HEX_PLACES
         {
-            let carry = shl::shl_add_assign_within_digit(&mut self.digits, n, DecimalDigit::zero());
+            let carry = shl::shl_carry_assign_within_digit(&mut self.digits, n, DecimalDigit::zero());
             if !carry.is_zero()
             {
                 self.digits.push(carry);
@@ -919,6 +920,65 @@ where T: Digit, UBig<T>: std::ops::ShlAssign<usize>
     {
         let mut shifted = self.clone();
         shifted <<= n;
+        shifted
+    }
+}
+
+
+impl<T> std::ops::ShrAssign<usize> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    fn shr_assign(&mut self, n: usize)
+    {
+        let (high, low) = (n / BinaryDigit::<T>::NR_BITS, n % BinaryDigit::<T>::NR_BITS);
+        if high != 0
+        {
+            self.digits.drain(..high);
+        }
+        if low != 0
+        {
+            shr::shr_carry_assign_within_digit(&mut self.digits, low, BinaryDigit::zero());
+            self.drop_leading_zeros();
+        }
+    }
+}
+
+impl<T> std::ops::ShrAssign<usize> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    fn shr_assign(&mut self, n: usize)
+    {
+        if n <= 4 * DecimalDigit::<T>::MAX_HEX_PLACES
+        {
+            shr::shr_carry_assign_within_digit(&mut self.digits, n, DecimalDigit::zero());
+            self.drop_leading_zeros();
+        }
+        else
+        {
+            // FIXME
+            unimplemented!()
+        }
+    }
+}
+
+impl<T> std::ops::Shr<usize> for UBig<T>
+where T: Digit, UBig<T>: std::ops::ShrAssign<usize>
+{
+    type Output = Self;
+    fn shr(self, n: usize) -> Self::Output
+    {
+        &self >> n
+    }
+}
+
+impl<T> std::ops::Shr<usize> for &UBig<T>
+where T: Digit, UBig<T>: std::ops::ShrAssign<usize>
+{
+    type Output = UBig<T>;
+    fn shr(self, n: usize) -> Self::Output
+    {
+        let mut shifted = self.clone();
+        shifted >>= n;
         shifted
     }
 }

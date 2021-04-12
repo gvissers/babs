@@ -10,6 +10,7 @@ pub trait DigitStorage:
     + std::ops::Rem<Output=Self>
     + std::ops::Sub<Output=Self>
     + std::ops::Shl<usize, Output=Self>
+    + std::ops::Shr<usize, Output=Self>
 {
     const DECIMAL_RADIX: Self;
 }
