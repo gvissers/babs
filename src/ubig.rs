@@ -1,6 +1,7 @@
 mod add;
 mod div;
 mod mul;
+mod rsub;
 mod shl;
 mod shr;
 mod sub;
