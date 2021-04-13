@@ -74,17 +74,17 @@ impl<T> UBig<T>
         }
         else if n1 <= n0 - offset
         {
-            if let Some(carry) = add::add_assign_big(&mut self.digits[offset..], &other.digits)
+            if add::add_assign_big(&mut self.digits[offset..], &other.digits)
             {
-                self.digits.push(carry);
+                self.digits.push(T::one());
             }
         }
         else
         {
             self.digits.extend_from_slice(&other.digits[n0-offset..]);
-            if let Some(carry) = add::add_assign_big(&mut self.digits[offset..], &other.digits[..n0-offset])
+            if add::add_assign_big(&mut self.digits[offset..], &other.digits[..n0-offset])
             {
-                self.digits.push(carry);
+                self.digits.push(T::one());
             }
         }
 
@@ -99,7 +99,7 @@ impl<T> UBig<T>
         let n0 = self.nr_digits();
         let n1 = other.nr_digits();
         if n0 < n1 + offset
-            || sub::sub_assign_big(&mut self.digits[offset..], &other.digits).is_some()
+            || sub::sub_assign_big(&mut self.digits[offset..], &other.digits)
         {
             Err(Error::Underflow)
         }
