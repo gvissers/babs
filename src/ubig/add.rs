@@ -56,9 +56,8 @@ where T: Digit
 }
 
 /// Add the big numbers represented by the digits in `nr0` and `nr1`, and store the result in
-/// `sum`. The result array must be big enough to hold the result, i.e. at least of
-/// length `max(n0,n1) + 1`, where `n0` and `n1` denote the number of digits in `nr0` and `nr1`
-/// respectively. Returns the number of digits used by the sum.
+/// `sum`. The result array must be big enough to hold the result. Returns the number of digits
+/// used by the sum.
 pub fn add_big_into<T>(nr0: &[T], nr1: &[T], sum: &mut [T]) -> usize
 where T: Digit
 {
@@ -66,7 +65,7 @@ where T: Digit
     let n1 = nr1.len();
     let nmin = n0.min(n1);
     let nmax = n0.max(n1);
-    assert!(sum.len() >= nmax + 1);
+    assert!(sum.len() >= nmax);
 
     let mut carry = false;
     for ((&d0, &d1), dr) in nr0.iter().zip(nr1).zip(sum.iter_mut())
@@ -82,19 +81,16 @@ where T: Digit
         std::cmp::Ordering::Greater => { sum[nmin..nmax].copy_from_slice(&nr0[nmin..]); }
     }
 
-    sum[nmax] = T::zero();
-    if carry
+    if carry && inc_assign(&mut sum[nmin..nmax])
     {
-        inc_assign(&mut sum[nmin..nmax+1]);
+        assert!(sum.len() > nmax);
+        sum[nmax] = T::one();
+        nmax + 1
     }
-
-    let mut n = nmax + 1;
-    while n > 0 && sum[n-1].is_zero()
+    else
     {
-        n -= 1;
+        nmax
     }
-
-    n
 }
 
 #[cfg(test)]
@@ -499,11 +495,21 @@ mod tests
 
     #[test]
     #[should_panic]
-    fn test_add_big_into_binary_overflow()
+    fn test_add_big_into_binary_overflow_0()
     {
         let nr0 = [BinaryDigit(0xffffu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
         let nr1 = [BinaryDigit(1u16), BinaryDigit(0), BinaryDigit(0), BinaryDigit(22)];
-        let mut sum = [BinaryDigit(0u16); 4];
+        let mut sum = [BinaryDigit(0u16); 3];
+        let _n = add_big_into(&nr0, &nr1, &mut sum);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_big_into_binary_overflow_1()
+    {
+        let nr0 = [BinaryDigit(0xffffu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
+        let nr1 = [BinaryDigit(1u16), BinaryDigit(0), BinaryDigit(0)];
+        let mut sum = [BinaryDigit(0u16); 3];
         let _n = add_big_into(&nr0, &nr1, &mut sum);
     }
 
@@ -555,11 +561,21 @@ mod tests
 
     #[test]
     #[should_panic]
-    fn test_add_big_into_decimal_overflow()
+    fn test_add_big_into_decimal_overflow_0()
     {
         let nr0 = [DecimalDigit(9_999u16), DecimalDigit(9_999), DecimalDigit(9_999)];
         let nr1 = [DecimalDigit(1u16), DecimalDigit(0), DecimalDigit(0), DecimalDigit(22)];
-        let mut sum = [DecimalDigit(0u16); 4];
+        let mut sum = [DecimalDigit(0u16); 3];
+        let _n = add_big_into(&nr0, &nr1, &mut sum);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_add_big_into_decimal_overflow_1()
+    {
+        let nr0 = [DecimalDigit(9_999u16), DecimalDigit(9_999), DecimalDigit(9_999)];
+        let nr1 = [DecimalDigit(1u16), DecimalDigit(0), DecimalDigit(0)];
+        let mut sum = [DecimalDigit(0u16); 3];
         let _n = add_big_into(&nr0, &nr1, &mut sum);
     }
 }

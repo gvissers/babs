@@ -114,6 +114,6 @@ fn test_div_by_zero_binary()
 #[should_panic]
 fn test_div_by_zero_decimal()
 {
-    let n = UBigDec8::from_str("39103919881210219921").unwrap() / 0;
+    let _n = UBigDec8::from_str("39103919881210219921").unwrap() / 0;
 }
 

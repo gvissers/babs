@@ -2,6 +2,9 @@ use crate::digit::Digit;
 
 /// The minimum size of a number (in digits) for Karatsuba multiplication. Should be at least 4.
 const KARATSUBA_CUTOFF: usize = 16;
+/// The minimum size of a number (in digits) for Toom-Cook multiplication.
+const TOOM3_CUTOFF: usize = 128;
+
 
 /// Multiply the number or number part represented by the digits in `nr` by the single digit `fac`,
 /// and add the single digit `off` to the result. Return the carry on overflow, or `None` if the
@@ -74,7 +77,11 @@ where T: Digit
         let n1 = nr1.len();
         assert!(product.len() >= n0 + n1, "Not enough space to store the result");
 
-        if n0 >= KARATSUBA_CUTOFF && n1 >= KARATSUBA_CUTOFF
+        if n0 >= TOOM3_CUTOFF && n1 >= TOOM3_CUTOFF
+        {
+            mul_big_toom3_into(nr0, nr1, product)
+        }
+        else if n0 >= KARATSUBA_CUTOFF && n1 >= KARATSUBA_CUTOFF
         {
             let work_size = calc_karatsuba_work_size(n0.max(n1));
             let mut work = vec![T::zero(); work_size];
@@ -104,7 +111,11 @@ where T: Digit
         let n1 = nr1.len();
         assert!(product.len() >= n0 + n1, "Not enough space to store the result");
 
-        if n0 >= KARATSUBA_CUTOFF && n1 >= KARATSUBA_CUTOFF
+        if n0 >= TOOM3_CUTOFF && n1 >= TOOM3_CUTOFF
+        {
+            mul_big_toom3_into(nr0, nr1, product)
+        }
+        else if n0 >= KARATSUBA_CUTOFF && n1 >= KARATSUBA_CUTOFF
         {
             mul_big_karatsuba_into(nr0, nr1, product, work)
         }
@@ -197,7 +208,7 @@ where T: Digit
     }
 
     let carry = crate::ubig::add::add_assign_big(&mut result[split..], &z1[..nz1]);
-    assert!(carry.is_none());
+    assert!(!carry);
     let mut n = n0 + n1;
     while n > 0 && result[n-1].is_zero()
     {
@@ -205,6 +216,417 @@ where T: Digit
     }
     n
 }
+
+#[inline]
+fn less<T>(nr0: &[T], nr1: &[T]) -> bool
+where T: Digit
+{
+    nr0.len() < nr1.len() || (nr0.len() == nr1.len() && nr0.iter().rev().lt(nr1.iter().rev()))
+}
+
+#[inline]
+fn drop_leading_zeros<T>(nr: &[T], len: usize) -> usize
+where T: Digit
+{
+    let mut n = len;
+    while n > 0 && nr[n-1].is_zero()
+    {
+        n -= 1
+    }
+    n
+}
+
+fn mul_big_toom3_into<T>(nr0: &[T], nr1: &[T], result: &mut [T]) -> usize
+where T: Digit
+{
+    // r = base^b, worst case base = 2
+    //       0 ≤  p(0),  q(0) ≤ r-1                        → b digits
+    //       1 ≤  p(1),  q(1) ≤ 3*(r-1) = (2+1)*(r-1)      → b+1 digits
+    //  -(r-2) ≤ p(-1), q(-1) ≤ 2*(r-1)                    → b+1 digits
+    // -2(r-3) ≤ p(-2), q(-2) ≤ 5*(r-1) = (4+1)*(r-1)      → b+2 digits
+    //       1 ≤  p(∞),  q(∞) ≤ r-1                        → b digits
+    //
+    //                0 ≤  r(0) ≤ (r-1)^2 < r^2            → 2b digits
+    //                1 ≤  r(1) ≤ 9*(r-1)^2 < (8+1)r^2     → 2b+3 digits
+    //   -2*(r-2)*(r-1) ≤ r(-1) ≤ 4*(r-1)^2 < 4r^2         → 2b+2 digits
+    //  -10*(r-3)*(r-1) ≤ r(-2) ≤ 25*(r-1)^2 < (16+8+1)r^2 → 2b+4 digits
+    //                1 ≤  r(∞) ≤ (r-1)^2 < r^2            → 2b digits
+    //
+    // r_0 ← r(0): 0 ≤ r_0 ≤ (r-1)^2 < r^2                 → 2b digits
+    // r_4 ← r(∞): 1 ≤ r_4 ≤ (r-1)^2 < r^2                 → 2b digits
+    // r_3 ← (r(−2) − r(1))/3:                             → 2b+2 digits, +2 before /3 → 2b+4
+    //   -4(r-1)^2 ≤ r_3 ≤ 7(r-1)^2 < (4+2+1)r^2
+    // r_1 ← (r(1) - r(-1))/2:                             → 2b+2 digits, +1 before /2 → 2b+3
+    //    0 ≤ r_1 ≤ 4(r-1)^2
+    // r_2 ← r(-1) - r(0):                                 → 2b+1 digits
+    //    -2(r-1)^2 ≤ r_2 ≤ 3(r-1)^2 < (2+1)r^2
+    // r_3 ← (r_2 − r_3)/2 + 2r(∞)                         → 2b+1 digits, +1 before /2 → 2b+2
+    //    0 ≤ r_3 ≤ 2(r-1)^2
+    // r_2 ← r_2 + r_1 − r_4                               → 2b+1 digits, +1 before -r4 → 2b+2
+    //    0 ≤ r_2 ≤ 3(r-1)^2 < (2+1)r^2
+    // r_1 ← r_1 - r_3                                     → 2b digits
+    //    0 ≤ r_1 ≤ 2(r-1)^2
+
+    let nd0 = nr0.len();
+    let nd1 = nr1.len();
+    assert!(nd0 > 0 || nd1 > 0);
+    let b = (nd0.max(nd1) + 2) / 3;
+
+    let mut n = nd0 + nd1;
+    result[..n].fill(T::zero());
+
+    let mut pwork = vec![T::zero(); 3*b+4];
+    let (pm1, pwork) = pwork.split_at_mut(b+1);
+    let (p1, pm2) = pwork.split_at_mut(b+1);
+
+    let mut qwork = vec![T::zero(); 3*b+4];
+    let (qm1, qwork) = qwork.split_at_mut(b+1);
+    let (q1, qm2) = qwork.split_at_mut(b+1);
+
+    let (r0, r4) = result.split_at_mut(4*b);
+    let mut rwork = vec![T::zero(); 6*b+11];
+    let (r1, rwork) = rwork.split_at_mut(2*b+3);
+    let (rm1, rm2) = rwork.split_at_mut(2*b+3);
+
+    let p0 = &nr0[..b.min(nd0)];
+    let len_p0 = drop_leading_zeros(p0, p0.len());
+    let m1 = &nr0[b.min(nd0)..(2*b).min(nd0)];
+    let len_m1 = drop_leading_zeros(m1, m1.len());
+    let pinf = &nr0[(2*b).min(nd0)..];
+    let len_pinf = pinf.len();
+    let mut len_pm1 = crate::ubig::add::add_big_into(&p0[..len_p0], &pinf, pm1);
+    let len_p1 = crate::ubig::add::add_big_into(&pm1[..len_pm1], &m1[..len_m1], p1);
+    let sign_pm1 = less(&pm1[..len_pm1], &m1[..len_m1]);
+    if sign_pm1
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut pm1[..len_m1], &m1[..len_m1]);
+        len_pm1 = len_m1;
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut pm1[..len_pm1], &m1[..len_m1]);
+    }
+    len_pm1 = drop_leading_zeros(pm1, len_pm1);
+    pm2[..len_pinf].copy_from_slice(&pinf);
+    let mut len_pm2 = len_pinf;
+    let mut sign_pm2;
+    if sign_pm1
+    {
+        sign_pm2 = less(&pm2[..len_pm2], &pm1[..len_pm1]);
+        if sign_pm2
+        {
+            crate::ubig::rsub::rsub_assign_big(&mut pm2[..len_pm1], &pm1[..len_pm1]);
+            len_pm2 = len_pm1;
+        }
+        else
+        {
+            crate::ubig::sub::sub_assign_big(&mut pm2[..len_pm2], &pm1[..len_pm1]);
+        }
+        len_pm2 = drop_leading_zeros(pm2, len_pm2);
+    }
+    else
+    {
+        sign_pm2 = false;
+        len_pm2 = len_pm2.max(len_pm1);
+        if crate::ubig::add::add_assign_big(&mut pm2[..len_pm2], &pm1[..len_pm1])
+        {
+            pm2[len_pm2] = T::one();
+            len_pm2 += 1;
+        }
+    }
+    if !crate::ubig::shl::shl_carry_assign_within_digit(&mut pm2[..len_pm2], 1, T::zero()).is_zero()
+    {
+        pm2[len_pm2] = T::one();
+        len_pm2 += 1;
+    }
+    if sign_pm2
+    {
+        len_pm2 = len_pm2.max(len_p0);
+        if crate::ubig::add::add_assign_big(&mut pm2[..len_pm2], &p0[..len_p0])
+        {
+            pm2[len_pm2] = T::one();
+            len_pm2 += 1;
+        }
+    }
+    else if less(&pm2[..len_pm2], &p0[..len_p0])
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut pm2[..len_p0], &p0[..len_p0]);
+        len_pm2 = drop_leading_zeros(pm2, len_p0);
+        sign_pm2 = true;
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut pm2[..len_pm2], &p0[..len_p0]);
+        len_pm2 = drop_leading_zeros(pm2, len_pm2);
+    }
+
+    let q0 = &nr1[..b.min(nd1)];
+    let len_q0 = drop_leading_zeros(q0, q0.len());
+    let n1 = &nr1[b.min(nd1)..(2*b).min(nd1)];
+    let len_n1 = drop_leading_zeros(n1, n1.len());
+    let qinf = &nr1[(2*b).min(nd1)..];
+    let len_qinf = qinf.len();
+    let mut len_qm1 = crate::ubig::add::add_big_into(&q0[..len_q0], &qinf, qm1);
+    let len_q1 = crate::ubig::add::add_big_into(&qm1[..len_qm1], &n1[..len_n1], q1);
+    let sign_qm1 = less(&qm1[..len_qm1], &n1[..len_n1]);
+    if sign_qm1
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut qm1[..len_n1], &n1[..len_n1]);
+        len_qm1 = len_n1;
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut qm1[..len_qm1], &n1[..len_n1]);
+    }
+    len_qm1 = drop_leading_zeros(qm1, len_qm1);
+    qm2[..len_qinf].copy_from_slice(&qinf);
+    let mut len_qm2 = len_qinf;
+    let mut sign_qm2;
+    if sign_qm1
+    {
+        sign_qm2 = less(&qm2[..len_qm2], &qm1[..len_qm1]);
+        if sign_qm2
+        {
+            crate::ubig::rsub::rsub_assign_big(&mut qm2[..len_qm1], &qm1[..len_qm1]);
+            len_qm2 = drop_leading_zeros(qm2, len_qm1);
+        }
+        else
+        {
+            crate::ubig::sub::sub_assign_big(&mut qm2[..len_qm2], &qm1[..len_qm1]);
+            len_qm2 = drop_leading_zeros(qm2, len_qm2);
+        }
+    }
+    else
+    {
+        sign_qm2 = false;
+        len_qm2 = len_qm2.max(len_qm1);
+        if crate::ubig::add::add_assign_big(&mut qm2[..len_qm2], &qm1[..len_qm1])
+        {
+            qm2[len_qm2] = T::one();
+            len_qm2 += 1;
+        }
+    }
+    if !crate::ubig::shl::shl_carry_assign_within_digit(&mut qm2[..len_qm2], 1, T::zero()).is_zero()
+    {
+        qm2[len_qm2] = T::one();
+        len_qm2 += 1;
+    }
+    if sign_qm2
+    {
+        len_qm2 = len_qm2.max(len_q0);
+        if crate::ubig::add::add_assign_big(&mut qm2[..len_qm2], &q0[..len_q0])
+        {
+            qm2[len_qm2] = T::one();
+            len_qm2 += 1;
+        }
+    }
+    else if less(&qm2[..len_qm2], &q0[..len_q0])
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut qm2[..len_q0], &q0[..len_q0]);
+        len_qm2 = drop_leading_zeros(qm2, len_q0);
+        sign_qm2 = true;
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut qm2[..len_qm2], &q0[..len_q0]);
+        len_qm2 = drop_leading_zeros(qm2, len_qm2);
+    }
+
+    let len_r0 = mul_big_into(&p0[..len_p0], &q0[..len_q0], r0);
+    let mut len_r1 = mul_big_into(&p1[..len_p1], &q1[..len_q1], r1);
+    let len_rm1 = mul_big_into(&pm1[..len_pm1], &qm1[..len_qm1], rm1);
+    let sign_rm1 = sign_pm1 ^ sign_qm1;
+    let len_rm2 = mul_big_into(&pm2[..len_pm2], &qm2[..len_qm2], rm2);
+    let sign_rm2 = sign_pm2 ^ sign_qm2;
+    let len_r4 = mul_big_into(&pinf, &qinf, r4);
+
+    let three = T::one() + T::one() + T::one();
+
+    let r3 = rm2;
+    let mut len_r3 = len_rm2;
+    let mut sign_r3;
+    if sign_rm2
+    {
+        len_r3 = len_r3.max(len_r1);
+        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r1[..len_r1])
+        {
+            r3[len_r3] = T::one();
+            len_r3 += 1;
+        }
+        sign_r3 = true;
+    }
+    else if less(&r3[..len_r3], &r1[..len_r1])
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r1], &r1[..len_r1]);
+        len_r3 = drop_leading_zeros(r3, len_r1);
+        sign_r3 = true;
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r1[..len_r1]);
+        len_r3 = drop_leading_zeros(r3, len_r3);
+        sign_r3 = false;
+    }
+    crate::ubig::div::div_assign_digit(&mut r3[..len_r3], three);
+    len_r3 = drop_leading_zeros(r3, len_r3);
+    if sign_rm1
+    {
+        len_r1 = len_r1.max(len_rm1);
+        if crate::ubig::add::add_assign_big(&mut r1[..len_r1], &rm1[..len_rm1])
+        {
+            r1[len_r1] = T::one();
+            len_r1 += 1;
+        }
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut r1[..len_r1], &rm1[..len_rm1]);
+        len_r1 = drop_leading_zeros(r1, len_r1);
+    };
+    crate::ubig::shr::shr_carry_assign_within_digit(&mut r1[..len_r1], 1, T::zero());
+    len_r1 = drop_leading_zeros(r1, len_r1);
+    let r2 = rm1;
+    let mut len_r2 = len_rm1;
+    let sign_r2;
+    if sign_rm1
+    {
+        len_r2 = len_r2.max(len_r0);
+        if crate::ubig::add::add_assign_big(&mut r2[..len_r2], &r0[..len_r0])
+        {
+            r2[len_r2] = T::one();
+            len_r2 += 1;
+        }
+        sign_r2 = true;
+    }
+    else if less(&r2[..len_r2], &r0[..len_r0])
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut r2[..len_r0], &r0[..len_r0]);
+        len_r2 = drop_leading_zeros(r2, len_r0);
+        sign_r2 = true;
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut r2[..len_r2], &r0[..len_r0]);
+        len_r2 = drop_leading_zeros(r2, len_r2);
+        sign_r2 = false;
+    }
+    if sign_r2
+    {
+        if !sign_r3
+        {
+            len_r3 = len_r3.max(len_r2);
+            if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r2[..len_r2])
+            {
+                r3[len_r3] = T::one();
+                len_r3 += 1;
+            }
+            sign_r3 = true;
+        }
+        else if less(&r3[..len_r3], &r2[..len_r2])
+        {
+            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r2], &r2[..len_r2]);
+            len_r3 = drop_leading_zeros(r3, len_r2);
+            sign_r3 = true;
+        }
+        else
+        {
+            crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r2[..len_r2]);
+            len_r3 = drop_leading_zeros(r3, len_r3);
+            sign_r3 = false;
+        }
+    }
+    else
+    {
+        if sign_r3
+        {
+            len_r3 = len_r3.max(len_r2);
+            if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r2[..len_r2])
+            {
+                r3[len_r3] = T::one();
+                len_r3 += 1;
+            }
+            sign_r3 = false;
+        }
+        else if less(&r3[..len_r3], &r2[..len_r2])
+        {
+            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r2], &r2[..len_r2]);
+            len_r3 = drop_leading_zeros(r3, len_r2);
+            sign_r3 = false;
+        }
+        else
+        {
+            crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r2[..len_r2]);
+            len_r3 = drop_leading_zeros(r3, len_r3);
+            sign_r3 = len_r3 != 0;
+        }
+    }
+    crate::ubig::shr::shr_carry_assign_within_digit(&mut r3[..len_r3], 1, T::zero());
+    len_r3 = drop_leading_zeros(r3, len_r3);
+    if !sign_r3
+    {
+        len_r3 = len_r3.max(len_r4);
+        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r4[..len_r4])
+        {
+            r3[len_r3] = T::one();
+            len_r3 += 1;
+        }
+        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r4[..len_r4])
+        {
+            r3[len_r3] = T::one();
+            len_r3 += 1;
+        }
+    }
+    else
+    {
+        if less(&r3[..len_r3], &r4[..len_r4])
+        {
+            len_r3 = len_r4;
+            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
+            if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r4[..len_r4])
+            {
+                r3[len_r3] = T::one();
+                len_r3 += 1;
+            }
+        }
+        else
+        {
+            crate::ubig::sub::sub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
+            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
+            len_r3 = drop_leading_zeros(r3, len_r4);
+        }
+    }
+    // sign_r3 = false;
+    if sign_r2
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut r2[..len_r1], &r1[..len_r1]);
+        len_r2 = drop_leading_zeros(r2, len_r1);
+    }
+    else
+    {
+        len_r2 = len_r2.max(len_r1);
+        if crate::ubig::add::add_assign_big(&mut r2[..len_r2], &r1[..len_r1])
+        {
+            r2[len_r2] = T::one();
+            len_r2 += 1;
+        }
+    }
+    // sign_r2 = false;
+    crate::ubig::sub::sub_assign_big(&mut r2[..len_r2], &r4[..len_r4]);
+    len_r2 = drop_leading_zeros(r2, len_r2);
+    crate::ubig::sub::sub_assign_big(&mut r1[..len_r1], &r3[..len_r3]);
+    len_r1 = drop_leading_zeros(r1, len_r1);
+
+    crate::ubig::add::add_assign_big(&mut result[b..], &r1[..len_r1]);
+    crate::ubig::add::add_assign_big(&mut result[2*b..], &r2[..len_r2]);
+    crate::ubig::add::add_assign_big(&mut result[3*b..], &r3[..len_r3]);
+
+    while n > 0 && result[n-1].is_zero()
+    {
+        n -= 1;
+    }
+    n
+}
+
 
 #[cfg(test)]
 mod tests
@@ -597,5 +1019,30 @@ mod tests
             DecimalDigit(97),
             DecimalDigit(49)
         ]);
+    }
+
+    #[test]
+    fn test_big_into_toom3()
+    {
+        let n = [DecimalDigit(9012u16), DecimalDigit(5678), DecimalDigit(1234), DecimalDigit(7890), DecimalDigit(3456), DecimalDigit(12)];
+        let m = [DecimalDigit(1098), DecimalDigit(5432), DecimalDigit(9876), DecimalDigit(4321), DecimalDigit(8765), DecimalDigit(9)];
+        let mut prod = vec![DecimalDigit(0); n.len() + m.len()];
+        let nr_digits = mul_big_toom3_into(&n, &m, &mut prod);
+        assert_eq!(nr_digits, 11);
+        assert_eq!(&prod, &[DecimalDigit(5176), DecimalDigit(8617), DecimalDigit(5858), DecimalDigit(5208), DecimalDigit(6009), DecimalDigit(4937), DecimalDigit(1632), DecimalDigit(6761), DecimalDigit(3124), DecimalDigit(9326), DecimalDigit(121), DecimalDigit(0)]);
+
+        let n = [BinaryDigit(0x16u8), BinaryDigit(0x63), BinaryDigit(0x1f), BinaryDigit(0xe3), BinaryDigit(0x73), BinaryDigit(0x98), BinaryDigit(0xa6), BinaryDigit(0x16), BinaryDigit(0x33), BinaryDigit(0x72), BinaryDigit(0xbb)];
+        let m = [BinaryDigit(0x72), BinaryDigit(0x83), BinaryDigit(0x8f), BinaryDigit(0xf7), BinaryDigit(0x72), BinaryDigit(0xa7), BinaryDigit(0xa1), BinaryDigit(0x99), BinaryDigit(0x4a), BinaryDigit(0xcf), BinaryDigit(0x32), BinaryDigit(0x5d)];
+        let mut prod = vec![BinaryDigit(0); n.len() + m.len()];
+        let nr_digits = mul_big_toom3_into(&n, &m, &mut prod);
+        assert_eq!(nr_digits, 23);
+        assert_eq!(&prod, &[BinaryDigit(0xcc), BinaryDigit(0x61), BinaryDigit(0xf8), BinaryDigit(0xc6), BinaryDigit(0xc2), BinaryDigit(0xd1), BinaryDigit(0x85), BinaryDigit(0x63), BinaryDigit(0x94), BinaryDigit(0xe7), BinaryDigit(0x0d), BinaryDigit(0x9c), BinaryDigit(0xf4), BinaryDigit(0xcb), BinaryDigit(0xea), BinaryDigit(0x17), BinaryDigit(0x9f), BinaryDigit(0xc1), BinaryDigit(0x2b), BinaryDigit(0xa5), BinaryDigit(0xb0), BinaryDigit(0x3d), BinaryDigit(0x44)]);
+
+        let n = [BinaryDigit(0xffu8); 3];
+        let m = [BinaryDigit(0xffu8); 3];
+        let mut prod = vec![BinaryDigit(0); n.len() + m.len()];
+        let nr_digits = mul_big_toom3_into(&n, &m, &mut prod);
+        assert_eq!(nr_digits, 6);
+        assert_eq!(prod, [BinaryDigit(0x01), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0xfe), BinaryDigit(0xff), BinaryDigit(0xff)]);
     }
 }
