@@ -137,24 +137,18 @@ where T: Digit
 {
     let n0 = nr0.len();
     let n1 = nr1.len();
-    let mut n = n0 + n1;
+    let n = n0 + n1;
 
     result[..n].fill(T::zero());
     for (offset, &d1) in nr1.iter().enumerate()
     {
-        let mut carry = T::zero();
-        for (&d0, rd) in nr0.iter().zip(&mut result[offset..])
-        {
-            carry = rd.add_prod_carry_assign(d0, d1, carry);
-        }
+        let carry = nr0.iter()
+            .zip(&mut result[offset..])
+            .fold(T::zero(), |carry, (&d0, rd)| rd.add_prod_carry_assign(d0, d1, carry));
         result[offset+n0] = carry;
     }
 
-    while n > 0  && result[n-1].is_zero()
-    {
-        n -= 1;
-    }
-    n
+    drop_leading_zeros(result, n)
 }
 
 /// Calculate the maximum size of the scratch array necessary to perform Karatsuba multiplication
@@ -204,19 +198,12 @@ where T: Digit
 
     crate::ubig::sub::sub_assign_big(&mut z1[..nz1], &z2[..nz2]);
     crate::ubig::sub::sub_assign_big(&mut z1[..nz1], &z0[..nz0]);                       // low0*high1 + high0*low1
-    while nz1 > 0 && z1[nz1-1].is_zero()
-    {
-        nz1 -= 1;
-    }
+    nz1 = drop_leading_zeros(z1, nz1);
 
     let carry = crate::ubig::add::add_assign_big(&mut result[split..], &z1[..nz1]);
     assert!(!carry);
-    let mut n = n0 + n1;
-    while n > 0 && result[n-1].is_zero()
-    {
-        n -= 1;
-    }
-    n
+
+    drop_leading_zeros(result, n0+n1)
 }
 
 #[inline]
