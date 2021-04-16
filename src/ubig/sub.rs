@@ -1,4 +1,5 @@
 use crate::digit::Digit;
+use crate::result::{Error, Result};
 
 /// Decrement the numer or number part represented by the digits in `nr` by one, and returns
 /// whether the number underflowed.
@@ -53,6 +54,52 @@ where T: Digit
     }
 
     carry && dec_assign(&mut nr0[nr1.len()..])
+}
+
+
+/// Subtract the big numbers represented by the digits in `nr0` and `nr1`, and store the result in
+/// `diff`. Returns the number of digits in the differene, a `NoSpace` error if the difference
+/// cannot be stored in `diff`, or an `Underflow` error if `nr0 < nr1`.
+/// NOTE: a `NoSpace` error is also returned if any leading zeros as a result of the subtraction
+/// cannot be stored. Therefore, `diff` should be able to contain at least as many digits as
+/// `nr0` is long.
+pub fn sub_big_into<T>(nr0: &[T], nr1: &[T], diff: &mut [T]) -> Result<usize>
+where T: Digit
+{
+    let n0 = nr0.len();
+    let n1 = nr1.len();
+    if diff.len() < n0
+    {
+        Err(Error::NoSpace)
+    }
+    else if n0 < n1
+    {
+        Err(Error::Underflow)
+    }
+    else
+    {
+        let mut carry = false;
+        for ((&d0, &d1), dr) in nr0.iter().zip(nr1).zip(diff.iter_mut())
+        {
+            *dr = d0;
+            carry = dr.sub_carry_assign(d1, carry);
+        }
+
+        diff[n1..n0].copy_from_slice(&nr0[n1..]);
+        if carry && dec_assign(&mut diff[n1..n0])
+        {
+            Err(Error::Underflow)
+        }
+        else
+        {
+            let mut n = n0;
+            while n > 0 && diff[n-1].is_zero()
+            {
+                n -= 1;
+            }
+            Ok(n)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -407,5 +454,129 @@ mod tests
         let underflow = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(50), DecimalDigit(99), DecimalDigit(99), DecimalDigit(99)]);
         assert!(underflow);
+    }
+
+    #[test]
+    fn test_sub_big_into_binary()
+    {
+        let nr0: [BinaryDigit<u8>; 0] = [];
+        let nr1: [BinaryDigit<u8>; 0] = [];
+        let mut diff = [];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(0));
+        assert_eq!(diff, []);
+
+        let nr0 = [BinaryDigit(1u8), BinaryDigit(2)];
+        let nr1: [BinaryDigit<u8>; 0] = [];
+        let mut diff = [BinaryDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(2));
+        assert_eq!(diff, [BinaryDigit(1), BinaryDigit(2)]);
+
+        let nr0 = [BinaryDigit(1u8), BinaryDigit(2)];
+        let nr1 = [BinaryDigit(1u8)];
+        let mut diff = [BinaryDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(2));
+        assert_eq!(diff, [BinaryDigit(0), BinaryDigit(2)]);
+
+        let nr0 = [BinaryDigit(1u8), BinaryDigit(2u8)];
+        let nr1 = [BinaryDigit(2u8)];
+        let mut diff = [BinaryDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(2));
+        assert_eq!(diff, [BinaryDigit(0xff), BinaryDigit(1)]);
+
+        let nr0 = [BinaryDigit(1u8), BinaryDigit(1u8)];
+        let nr1 = [BinaryDigit(2u8)];
+        let mut diff = [BinaryDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(1));
+        assert_eq!(diff, [BinaryDigit(0xff), BinaryDigit(0)]);
+
+        let nr0 = [BinaryDigit(0x2518af54u32), BinaryDigit(0xf6271615), BinaryDigit(0xa5617882)];
+        let nr1 = [BinaryDigit(0x38278919u32), BinaryDigit(0xffffffff), BinaryDigit(0x76552298)];
+        let mut diff = [BinaryDigit(0); 3];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(3));
+        assert_eq!(diff, [BinaryDigit(0xecf1263b), BinaryDigit(0xf6271615), BinaryDigit(0x2f0c55e9)]);
+    }
+
+    #[test]
+    fn test_sub_big_into_decimal()
+    {
+        let nr0: [DecimalDigit<u8>; 0] = [];
+        let nr1: [DecimalDigit<u8>; 0] = [];
+        let mut diff = [];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(0));
+        assert_eq!(diff, []);
+
+        let nr0 = [DecimalDigit(1u8), DecimalDigit(2)];
+        let nr1: [DecimalDigit<u8>; 0] = [];
+        let mut diff = [DecimalDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(2));
+        assert_eq!(diff, [DecimalDigit(1), DecimalDigit(2)]);
+
+        let nr0 = [DecimalDigit(1u8), DecimalDigit(2)];
+        let nr1 = [DecimalDigit(1u8)];
+        let mut diff = [DecimalDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(2));
+        assert_eq!(diff, [DecimalDigit(0), DecimalDigit(2)]);
+
+        let nr0 = [DecimalDigit(1u8), DecimalDigit(2u8)];
+        let nr1 = [DecimalDigit(2u8)];
+        let mut diff = [DecimalDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(2));
+        assert_eq!(diff, [DecimalDigit(99), DecimalDigit(1)]);
+
+        let nr0 = [DecimalDigit(1u8), DecimalDigit(1u8)];
+        let nr1 = [DecimalDigit(2u8)];
+        let mut diff = [DecimalDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(1));
+        assert_eq!(diff, [DecimalDigit(99), DecimalDigit(0)]);
+
+        let nr0 = [DecimalDigit(837_984_655u32), DecimalDigit(982_376_123), DecimalDigit(761_233_341)];
+        let nr1 = [DecimalDigit(899_987_987u32), DecimalDigit(213_872_166), DecimalDigit(688_231_987)];
+        let mut diff = [DecimalDigit(0); 3];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Ok(3));
+        assert_eq!(diff, [DecimalDigit(937_996_668), DecimalDigit(768_503_956), DecimalDigit(73_001_354)]);
+    }
+
+    #[test]
+    fn test_sub_big_into_nospace()
+    {
+        let nr0 = [DecimalDigit(837_984_655u32), DecimalDigit(982_376_123), DecimalDigit(761_233_341)];
+        let nr1 = [DecimalDigit(899_987_987u32), DecimalDigit(213_872_166), DecimalDigit(688_231_987)];
+        let mut diff = [DecimalDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Err(Error::NoSpace));
+
+        let nr0 = [BinaryDigit(0x4518af54u32), BinaryDigit(0xf6271615), BinaryDigit(0xa5617882)];
+        let nr1 = [BinaryDigit(0x38278919u32), BinaryDigit(0xf6271615), BinaryDigit(0xa5617882)];
+        let mut diff = [BinaryDigit(0); 2];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Err(Error::NoSpace));
+    }
+
+    #[test]
+    fn test_sub_big_into_underflow()
+    {
+        let nr0 = [DecimalDigit(837_984_655u32), DecimalDigit(982_376_123)];
+        let nr1 = [DecimalDigit(899_987_987u32), DecimalDigit(213_872_166), DecimalDigit(688_231_987)];
+        let mut diff = [DecimalDigit(0); 3];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Err(Error::Underflow));
+
+        let nr0 = [BinaryDigit(0x3518af54u32), BinaryDigit(0xf6271615), BinaryDigit(0xa5617882)];
+        let nr1 = [BinaryDigit(0x38278919u32), BinaryDigit(0xf6271615), BinaryDigit(0xa5617882)];
+        let mut diff = [BinaryDigit(0); 3];
+        let n = sub_big_into(&nr0, &nr1, &mut diff);
+        assert_eq!(n, Err(Error::Underflow));
     }
 }

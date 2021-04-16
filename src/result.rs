@@ -7,7 +7,9 @@ pub enum Error
     /// Underflow when subtracting big numbers
     Underflow,
     /// Attempt to divide by zero
-    DivisionByZero
+    DivisionByZero,
+    /// Not enough space to store a result
+    NoSpace
 }
 
 impl std::fmt::Display for Error
@@ -18,7 +20,8 @@ impl std::fmt::Display for Error
         {
             Error::InvalidNumber  => write!(f, "Invalid number"),
             Error::Underflow      => write!(f, "Underflow"),
-            Error::DivisionByZero => write!(f, "Division by zero")
+            Error::DivisionByZero => write!(f, "Division by zero"),
+            Error::NoSpace        => write!(f, "Not enough space to store the result")
         }
     }
 }

@@ -1,4 +1,5 @@
 use crate::digit::Digit;
+use crate::result::{Error, Result};
 
 /// Increment the numer or number part represented by the digits in `nr` by one, and return
 /// whether the number overflows.
@@ -56,40 +57,51 @@ where T: Digit
 }
 
 /// Add the big numbers represented by the digits in `nr0` and `nr1`, and store the result in
-/// `sum`. The result array must be big enough to hold the result. Returns the number of digits
-/// used by the sum.
-pub fn add_big_into<T>(nr0: &[T], nr1: &[T], sum: &mut [T]) -> usize
+/// `sum`. Returns the number of digits used by the sum, or a `NoSpace` error if the result will
+/// not fit in `sum`.
+pub fn add_big_into<T>(nr0: &[T], nr1: &[T], sum: &mut [T]) -> Result<usize>
 where T: Digit
 {
     let n0 = nr0.len();
     let n1 = nr1.len();
     let nmin = n0.min(n1);
     let nmax = n0.max(n1);
-    assert!(sum.len() >= nmax);
-
-    let mut carry = false;
-    for ((&d0, &d1), dr) in nr0.iter().zip(nr1).zip(sum.iter_mut())
+    if sum.len() < nmax
     {
-        *dr = d0;
-        carry = dr.add_carry_assign(d1, carry);
-    }
-
-    match n0.cmp(&n1)
-    {
-        std::cmp::Ordering::Equal   => { /* do nothing */ },
-        std::cmp::Ordering::Less    => { sum[nmin..nmax].copy_from_slice(&nr1[nmin..]); },
-        std::cmp::Ordering::Greater => { sum[nmin..nmax].copy_from_slice(&nr0[nmin..]); }
-    }
-
-    if carry && inc_assign(&mut sum[nmin..nmax])
-    {
-        assert!(sum.len() > nmax);
-        sum[nmax] = T::one();
-        nmax + 1
+        Err(Error::NoSpace)
     }
     else
     {
-        nmax
+        let mut carry = false;
+        for ((&d0, &d1), dr) in nr0.iter().zip(nr1).zip(sum.iter_mut())
+        {
+            *dr = d0;
+            carry = dr.add_carry_assign(d1, carry);
+        }
+
+        match n0.cmp(&n1)
+        {
+            std::cmp::Ordering::Equal   => { /* do nothing */ },
+            std::cmp::Ordering::Less    => { sum[nmin..nmax].copy_from_slice(&nr1[nmin..]); },
+            std::cmp::Ordering::Greater => { sum[nmin..nmax].copy_from_slice(&nr0[nmin..]); }
+        }
+
+        if carry && inc_assign(&mut sum[nmin..nmax])
+        {
+            if sum.len() <= nmax
+            {
+                Err(Error::NoSpace)
+            }
+            else
+            {
+                sum[nmax] = T::one();
+                Ok(nmax + 1)
+            }
+        }
+        else
+        {
+            Ok(nmax)
+        }
     }
 }
 
@@ -454,63 +466,59 @@ mod tests
         let nr1 = [BinaryDigit(0x1234u16)];
         let mut sum = [BinaryDigit(0u16); 2];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 1);
+        assert_eq!(n, Ok(1));
         assert_eq!(sum, [BinaryDigit(0x1234), BinaryDigit(0)]);
 
         let nr0 = [BinaryDigit(0xedcbu16)];
         let nr1 = [BinaryDigit(0x1234u16)];
         let mut sum = [BinaryDigit(0u16); 2];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 1);
+        assert_eq!(n, Ok(1));
         assert_eq!(sum, [BinaryDigit(0xffff), BinaryDigit(0)]);
 
         let nr0 = [BinaryDigit(0xfffeu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
         let nr1 = [BinaryDigit(1u16)];
         let mut sum = [BinaryDigit(0u16); 4];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 3);
+        assert_eq!(n, Ok(3));
         assert_eq!(sum, [BinaryDigit(0xffff), BinaryDigit(0xffff), BinaryDigit(0xffff), BinaryDigit(0)]);
 
         let nr0 = [BinaryDigit(0xffffu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
         let nr1 = [BinaryDigit(1u16)];
         let mut sum = [BinaryDigit(0u16); 4];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 4);
+        assert_eq!(n, Ok(4));
         assert_eq!(sum, [BinaryDigit(0), BinaryDigit(0), BinaryDigit(0), BinaryDigit(1)]);
 
         let nr0 = [BinaryDigit(0xffffu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
         let nr1 = [BinaryDigit(1u16), BinaryDigit(0), BinaryDigit(0), BinaryDigit(22)];
         let mut sum = [BinaryDigit(0u16); 5];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 4);
+        assert_eq!(n, Ok(4));
         assert_eq!(sum, [BinaryDigit(0), BinaryDigit(0), BinaryDigit(0), BinaryDigit(23), BinaryDigit(0)]);
 
         let nr0 = [BinaryDigit(0xffffu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
         let nr1 = [BinaryDigit(1u16), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0xffff)];
         let mut sum = [BinaryDigit(0u16); 5];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 5);
+        assert_eq!(n, Ok(5));
         assert_eq!(sum, [BinaryDigit(0), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0), BinaryDigit(1)]);
     }
 
     #[test]
-    #[should_panic]
-    fn test_add_big_into_binary_overflow_0()
+    fn test_add_big_into_binary_overflow()
     {
         let nr0 = [BinaryDigit(0xffffu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
         let nr1 = [BinaryDigit(1u16), BinaryDigit(0), BinaryDigit(0), BinaryDigit(22)];
         let mut sum = [BinaryDigit(0u16); 3];
-        let _n = add_big_into(&nr0, &nr1, &mut sum);
-    }
+        let n = add_big_into(&nr0, &nr1, &mut sum);
+        assert_eq!(n, Err(Error::NoSpace));
 
-    #[test]
-    #[should_panic]
-    fn test_add_big_into_binary_overflow_1()
-    {
         let nr0 = [BinaryDigit(0xffffu16), BinaryDigit(0xffff), BinaryDigit(0xffff)];
         let nr1 = [BinaryDigit(1u16), BinaryDigit(0), BinaryDigit(0)];
         let mut sum = [BinaryDigit(0u16); 3];
-        let _n = add_big_into(&nr0, &nr1, &mut sum);
+        let n = add_big_into(&nr0, &nr1, &mut sum);
+        assert_eq!(n, Err(Error::NoSpace));
     }
 
     #[test]
@@ -520,62 +528,58 @@ mod tests
         let nr1 = [DecimalDigit(1_234u16)];
         let mut sum = [DecimalDigit(0u16); 2];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 1);
+        assert_eq!(n, Ok(1));
         assert_eq!(sum, [DecimalDigit(1234), DecimalDigit(0)]);
 
         let nr0 = [DecimalDigit(8_765u16)];
         let nr1 = [DecimalDigit(1_234u16)];
         let mut sum = [DecimalDigit(0u16); 2];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 1);
+        assert_eq!(n, Ok(1));
         assert_eq!(sum, [DecimalDigit(9_999), DecimalDigit(0)]);
 
         let nr0 = [DecimalDigit(9_998u16), DecimalDigit(9_999), DecimalDigit(9_999)];
         let nr1 = [DecimalDigit(1u16)];
         let mut sum = [DecimalDigit(0u16); 4];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 3);
+        assert_eq!(n, Ok(3));
         assert_eq!(sum, [DecimalDigit(9_999), DecimalDigit(9_999), DecimalDigit(9_999), DecimalDigit(0)]);
 
         let nr0 = [DecimalDigit(9_999u16), DecimalDigit(9_999), DecimalDigit(9_999)];
         let nr1 = [DecimalDigit(1u16)];
         let mut sum = [DecimalDigit(0u16); 4];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 4);
+        assert_eq!(n, Ok(4));
         assert_eq!(sum, [DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(1)]);
 
         let nr0 = [DecimalDigit(9_999u16), DecimalDigit(9_999), DecimalDigit(9_999)];
         let nr1 = [DecimalDigit(1u16), DecimalDigit(0), DecimalDigit(0), DecimalDigit(22)];
         let mut sum = [DecimalDigit(0u16); 5];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 4);
+        assert_eq!(n, Ok(4));
         assert_eq!(sum, [DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(23), DecimalDigit(0)]);
 
         let nr0 = [DecimalDigit(9_999u16), DecimalDigit(9_999), DecimalDigit(9_999)];
         let nr1 = [DecimalDigit(1u16), DecimalDigit(0), DecimalDigit(0), DecimalDigit(9_999)];
         let mut sum = [DecimalDigit(0u16); 5];
         let n = add_big_into(&nr0, &nr1, &mut sum);
-        assert_eq!(n, 5);
+        assert_eq!(n, Ok(5));
         assert_eq!(sum, [DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(1)]);
     }
 
     #[test]
-    #[should_panic]
-    fn test_add_big_into_decimal_overflow_0()
+    fn test_add_big_into_decimal_overflow()
     {
         let nr0 = [DecimalDigit(9_999u16), DecimalDigit(9_999), DecimalDigit(9_999)];
         let nr1 = [DecimalDigit(1u16), DecimalDigit(0), DecimalDigit(0), DecimalDigit(22)];
         let mut sum = [DecimalDigit(0u16); 3];
-        let _n = add_big_into(&nr0, &nr1, &mut sum);
-    }
+        let n = add_big_into(&nr0, &nr1, &mut sum);
+        assert_eq!(n, Err(Error::NoSpace));
 
-    #[test]
-    #[should_panic]
-    fn test_add_big_into_decimal_overflow_1()
-    {
         let nr0 = [DecimalDigit(9_999u16), DecimalDigit(9_999), DecimalDigit(9_999)];
         let nr1 = [DecimalDigit(1u16), DecimalDigit(0), DecimalDigit(0)];
         let mut sum = [DecimalDigit(0u16); 3];
-        let _n = add_big_into(&nr0, &nr1, &mut sum);
+        let n = add_big_into(&nr0, &nr1, &mut sum);
+        assert_eq!(n, Err(Error::NoSpace));
     }
 }
