@@ -418,11 +418,13 @@ impl_digit_decimal!(u32, u64);
 impl<T> num_traits::Zero for DecimalDigit<T>
 where T: num_traits::Zero
 {
+    #[inline]
     fn zero() -> Self
     {
         DecimalDigit(T::zero())
     }
 
+    #[inline]
     fn is_zero(&self) -> bool
     {
         self.0.is_zero()
@@ -432,6 +434,7 @@ where T: num_traits::Zero
 impl<T> num_traits::One for DecimalDigit<T>
 where T: num_traits::One
 {
+    #[inline]
     fn one() -> Self
     {
         DecimalDigit(T::one())
