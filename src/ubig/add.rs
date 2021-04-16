@@ -31,7 +31,7 @@ where T: Digit
     }
     else if nr[0].add_carry_assign(digit, false)
     {
-        inc_assign(&mut nr[1..]).then(|| T::one())
+        inc_assign(&mut nr[1..]).then(T::one)
     }
     else
     {

@@ -498,55 +498,26 @@ rm2[len_rm2..].fill(T::zero());
         len_r2 = drop_leading_zeros(r2, len_r2);
         sign_r2 = false;
     }
-    if sign_r2
+    if sign_r2 != sign_r3
     {
-        if !sign_r3
+        len_r3 = len_r3.max(len_r2);
+        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r2[..len_r2])
         {
-            len_r3 = len_r3.max(len_r2);
-            if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r2[..len_r2])
-            {
-                r3[len_r3] = T::one();
-                len_r3 += 1;
-            }
-            sign_r3 = true;
+            r3[len_r3] = T::one();
+            len_r3 += 1;
         }
-        else if less(&r3[..len_r3], &r2[..len_r2])
-        {
-            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r2], &r2[..len_r2]);
-            len_r3 = drop_leading_zeros(r3, len_r2);
-            sign_r3 = true;
-        }
-        else
-        {
-            crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r2[..len_r2]);
-            len_r3 = drop_leading_zeros(r3, len_r3);
-            sign_r3 = false;
-        }
+        sign_r3 = sign_r2;
+    }
+    else if less(&r3[..len_r3], &r2[..len_r2])
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r2], &r2[..len_r2]);
+        len_r3 = drop_leading_zeros(r3, len_r2);
     }
     else
     {
-        if sign_r3
-        {
-            len_r3 = len_r3.max(len_r2);
-            if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r2[..len_r2])
-            {
-                r3[len_r3] = T::one();
-                len_r3 += 1;
-            }
-            sign_r3 = false;
-        }
-        else if less(&r3[..len_r3], &r2[..len_r2])
-        {
-            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r2], &r2[..len_r2]);
-            len_r3 = drop_leading_zeros(r3, len_r2);
-            sign_r3 = false;
-        }
-        else
-        {
-            crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r2[..len_r2]);
-            len_r3 = drop_leading_zeros(r3, len_r3);
-            sign_r3 = len_r3 != 0;
-        }
+        crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r2[..len_r2]);
+        len_r3 = drop_leading_zeros(r3, len_r3);
+        sign_r3 = !sign_r3 && len_r3 != 0;
     }
     crate::ubig::shr::shr_carry_assign_within_digit(&mut r3[..len_r3], 1, T::zero());
     len_r3 = drop_leading_zeros(r3, len_r3);
@@ -564,24 +535,21 @@ rm2[len_rm2..].fill(T::zero());
             len_r3 += 1;
         }
     }
+    else if less(&r3[..len_r3], &r4[..len_r4])
+    {
+        len_r3 = len_r4;
+        crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
+        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r4[..len_r4])
+        {
+            r3[len_r3] = T::one();
+            len_r3 += 1;
+        }
+    }
     else
     {
-        if less(&r3[..len_r3], &r4[..len_r4])
-        {
-            len_r3 = len_r4;
-            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
-            if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r4[..len_r4])
-            {
-                r3[len_r3] = T::one();
-                len_r3 += 1;
-            }
-        }
-        else
-        {
-            crate::ubig::sub::sub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
-            crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
-            len_r3 = drop_leading_zeros(r3, len_r4);
-        }
+        crate::ubig::sub::sub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
+        crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], &r4[..len_r4]);
+        len_r3 = drop_leading_zeros(r3, len_r4);
     }
     // sign_r3 = false;
     if sign_r2
