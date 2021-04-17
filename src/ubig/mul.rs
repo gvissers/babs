@@ -159,11 +159,25 @@ const fn calc_karatsuba_work_size(n: usize) -> usize
     let mut nn = n;
     while nn >= KARATSUBA_CUTOFF
     {
-        let split1 = (nn + 1) / 2 + 1;
-        work_size += 2 * split1;
-        nn = split1;
+        let split = (nn + 1) / 2;
+        work_size += 2 * split;
+        nn = split;
     }
     work_size
+}
+
+fn sub_big_into_abs_sign<T>(nr0: &[T], nr1: &[T], abs_diff: &mut[T]) -> (bool, usize)
+where T: Digit
+{
+    debug_assert!(abs_diff.len() >= nr0.len().max(nr1.len()));
+    if less(nr0, nr1)
+    {
+        (true, crate::ubig::sub::sub_big_into(nr1, nr0, abs_diff).unwrap())
+    }
+    else
+    {
+        (false, crate::ubig::sub::sub_big_into(nr0, nr1, abs_diff).unwrap())
+    }
 }
 
 /// Multiply the number represented by `nr0` by `nr1` using Karatsuba multiplication, and store
@@ -177,28 +191,59 @@ where T: Digit
     let n0 = nr0.len();
     let n1 = nr1.len();
     let nmax = n0.max(n1);
-    assert!(n0 >= 4 && n1 >= 4, "Number of digits should be at least 4 for Karatsuba multiplication");
+    assert!(n0 >= 2 && n1 >= 2, "Number of digits should be at least 2 for Karatsuba multiplication");
     assert!(work.len() >= calc_karatsuba_work_size(nmax), "Insufficient work space");
 
     let split = (nmax + 1) / 2;
 
     let (low0, high0) = nr0.split_at(split.min(n0));
+    let nlow0 = drop_leading_zeros(low0, split);
     let (low1, high1) = nr1.split_at(split.min(n1));
+    let nlow1 = drop_leading_zeros(low1, split);
 
-    let (sum0, sum1) = result.split_at_mut(split+1);
-    let nsum0 = crate::ubig::add::add_big_into(&low0, &high0, sum0).unwrap();           // low0 + high0
-    let nsum1 = crate::ubig::add::add_big_into(&low1, &high1, sum1).unwrap();           // low1 + high1
+    let (diff0, diff1) = result.split_at_mut(split);
+    let (sign0, ndiff0) = sub_big_into_abs_sign(&low0[..nlow0], &high0, diff0); // low0 - high0
+    let (sign1, ndiff1) = sub_big_into_abs_sign(&low1[..nlow1], &high1, diff1); // low1 - high1
 
-    let (z1, new_work) = work.split_at_mut(2*split+2);
-    let mut nz1 = mul_big_into_with_work(&sum0[..nsum0], &sum1[..nsum1], z1, new_work); // (low0+high0)*(low1+high1)
+    let (z1, new_work) = work.split_at_mut(2*split);
+    z1.fill(T::zero());
+    let mut nz1 = mul_big_into_with_work(&diff0[..ndiff0], &diff1[..ndiff1], z1, new_work); // |(low0-high0)*(low1-high1)|
     result[..n0+n1].fill(T::zero());
     let (z0, z2) = result.split_at_mut(2*split);
     let nz0 = mul_big_into_with_work(&low0, &low1, z0, new_work);                       // low0*low1
     let nz2 = mul_big_into_with_work(&high0, &high1, z2, new_work);                     // high0*high1
 
-    crate::ubig::sub::sub_assign_big(&mut z1[..nz1], &z2[..nz2]);
-    crate::ubig::sub::sub_assign_big(&mut z1[..nz1], &z0[..nz0]);                       // low0*high1 + high0*low1
-    nz1 = drop_leading_zeros(z1, nz1);
+    if sign0 ^ sign1
+    {
+        nz1 = nz1.max(nz0);
+        if crate::ubig::add::add_assign_big(&mut z1[..nz1], &z0[..nz0])
+        {
+            z1[nz1] = T::one();
+            nz1 += 1;
+        }
+        nz1 = nz1.max(nz2);
+        if crate::ubig::add::add_assign_big(&mut z1[..nz1], &z2[..nz2])
+        {
+            crate::ubig::add::inc_assign(&mut result[split+nz1..]);
+        }
+    }
+    else if less(&z1[..nz1], &z0[..nz0])
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut z1[..nz0], &z0[..nz0]);
+        nz1 = drop_leading_zeros(z1, nz0).max(nz2);
+        if crate::ubig::add::add_assign_big(&mut z1[..nz1], &z2[..nz2])
+        {
+            crate::ubig::add::inc_assign(&mut result[split+nz1..]);
+        }
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(z1, &z0[..nz0]);
+        nz1 = drop_leading_zeros(z1, nz1);
+        debug_assert!(!less(&z2[..nz2], &z1[..nz1]), "z1 < 0");
+        crate::ubig::rsub::rsub_assign_big(&mut z1[..nz2], &z2[..nz2]);
+        nz1 = drop_leading_zeros(z1, nz2);
+    }
 
     let carry = crate::ubig::add::add_assign_big(&mut result[split..], &z1[..nz1]);
     assert!(!carry);
