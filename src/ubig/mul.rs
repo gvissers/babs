@@ -202,17 +202,18 @@ where T: Digit
     let nlow1 = drop_leading_zeros(low1, split);
 
     let (diff0, diff1) = result.split_at_mut(split);
-    let (sign0, ndiff0) = sub_big_into_abs_sign(&low0[..nlow0], &high0, diff0); // low0 - high0
-    let (sign1, ndiff1) = sub_big_into_abs_sign(&low1[..nlow1], &high1, diff1); // low1 - high1
+    let (sign0, ndiff0) = sub_big_into_abs_sign(&low0[..nlow0], &high0, diff0);     // low0 - high0
+    let (sign1, ndiff1) = sub_big_into_abs_sign(&low1[..nlow1], &high1, diff1);     // low1 - high1
 
     let (z1, new_work) = work.split_at_mut(2*split);
     z1.fill(T::zero());
     let mut nz1 = mul_big_into_with_work(&diff0[..ndiff0], &diff1[..ndiff1], z1, new_work); // |(low0-high0)*(low1-high1)|
     result[..n0+n1].fill(T::zero());
     let (z0, z2) = result.split_at_mut(2*split);
-    let nz0 = mul_big_into_with_work(&low0, &low1, z0, new_work);                       // low0*low1
-    let nz2 = mul_big_into_with_work(&high0, &high1, z2, new_work);                     // high0*high1
+    let nz0 = mul_big_into_with_work(&low0[..nlow0], &low1[..nlow1], z0, new_work); // low0*low1
+    let nz2 = mul_big_into_with_work(&high0, &high1, z2, new_work);                 // high0*high1
 
+    // Now calculate z1 = low0*high1 + high0*low1
     if sign0 ^ sign1
     {
         nz1 = nz1.max(nz0);
