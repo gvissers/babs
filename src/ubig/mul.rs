@@ -135,20 +135,20 @@ where T: Digit
 fn mul_big_long_into<T>(nr0: &[T], nr1: &[T], result: &mut [T]) -> usize
 where T: Digit
 {
-    let n0 = nr0.len();
-    let n1 = nr1.len();
-    let n = n0 + n1;
+    let nd0 = nr0.len();
+    let nd1 = nr1.len();
+    let nd = nd0 + nd1;
 
-    result[..n].fill(T::zero());
+    result[..nd].fill(T::zero());
     for (offset, &d1) in nr1.iter().enumerate()
     {
         let carry = nr0.iter()
-            .zip(&mut result[offset..offset+n0])
+            .zip(&mut result[offset..offset+nd0])
             .fold(T::zero(), |carry, (&d0, rd)| rd.add_prod_carry_assign(d0, d1, carry));
-        result[offset+n0] = carry;
+        result[offset+nd0] = carry;
     }
 
-    drop_leading_zeros(result, n)
+    drop_leading_zeros(result, nd)
 }
 
 /// Calculate the maximum size of the scratch array necessary to perform Karatsuba multiplication
