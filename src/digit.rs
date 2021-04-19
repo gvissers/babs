@@ -27,6 +27,10 @@ impl DigitStorage for u32
 {
     const DECIMAL_RADIX: Self = 1_000_000_000;
 }
+impl DigitStorage for u64
+{
+    const DECIMAL_RADIX: Self = 1_000_000_000_000_000_000;
+}
 
 /// Trait for a type that can be used as a digit in a big number
 pub trait Digit:
@@ -235,6 +239,7 @@ macro_rules! impl_digit_binary
 impl_digit_binary!(u8, u16);
 impl_digit_binary!(u16, u32);
 impl_digit_binary!(u32, u64);
+impl_digit_binary!(u64, u128);
 
 impl<T> num_traits::Zero for BinaryDigit<T>
 where T: num_traits::Zero
@@ -288,8 +293,9 @@ pub struct DecimalDigit<T>(pub T);
 impl<T> DecimalDigit<T>
 where T: DigitStorage
 {
-    /// The maximum number of decimal places used to denote a single digit
-    pub const NR_DECIMAL_PLACES: usize = std::mem::size_of::<T>() * 643 / 267;
+    /// The maximum number of decimal places used to denote a single digit. We keep a single bit
+    /// free so that addition of two digits will not overflow the underlying binary storage.
+    pub const NR_DECIMAL_PLACES: usize = (8 * std::mem::size_of::<T>() - 1) * 4004 / 13301;
     /// The maximum length of a hexadecimal number that still fits in a single digit
     pub const MAX_HEX_PLACES: usize = 2 * std::mem::size_of::<T>() - 1;
 
@@ -459,6 +465,7 @@ macro_rules! impl_digit_decimal
 impl_digit_decimal!(u8, u16);
 impl_digit_decimal!(u16, u32);
 impl_digit_decimal!(u32, u64);
+impl_digit_decimal!(u64, u128);
 
 impl<T> num_traits::Zero for DecimalDigit<T>
 where T: num_traits::Zero

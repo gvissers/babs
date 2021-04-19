@@ -45,7 +45,8 @@ where T: Digit
 pub fn add_assign_big<T>(nr0: &mut [T], nr1: &[T]) -> bool
 where T: Digit
 {
-    assert!(nr1.len() <= nr0.len());
+    let nd1 = nr1.len();
+    assert!(nd1 <= nr0.len());
 
     let mut carry = false;
     for (d0, &d1) in nr0.iter_mut().zip(nr1)
@@ -53,7 +54,7 @@ where T: Digit
         carry = d0.add_carry_assign(d1, carry);
     }
 
-    carry && inc_assign(&mut nr0[nr1.len()..])
+    carry && inc_assign(&mut nr0[nd1..])
 }
 
 /// Add the big numbers represented by the digits in `nr0` and `nr1`, and store the result in
