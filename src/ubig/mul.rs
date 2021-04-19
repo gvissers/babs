@@ -1,7 +1,7 @@
 use crate::digit::Digit;
 
 /// The minimum size of a number (in digits) for Karatsuba multiplication. Should be at least 4.
-const KARATSUBA_CUTOFF: usize = 16;
+const KARATSUBA_CUTOFF: usize = 20;
 /// The minimum size of a number (in digits) for Toom-Cook multiplication.
 const TOOM3_CUTOFF: usize = 128;
 
@@ -180,6 +180,21 @@ where T: Digit
     }
 }
 
+fn sub_assign_big_abs_sign<T>(nr0: &mut [T], len0: usize, nr1: &[T]) -> (bool, usize)
+where T: Digit
+{
+    if less(&nr0[..len0], nr1)
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut nr0[..nr1.len()], nr1);
+        (true, drop_leading_zeros(nr0, nr1.len()))
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut nr0[..len0], nr1);
+        (false, drop_leading_zeros(nr0, len0))
+    }
+}
+
 /// Multiply the number represented by `nr0` by `nr1` using Karatsuba multiplication, and store
 /// the result in `result`. The scratch array `work` should be of appropriate size
 /// (see [calc_karatsuba_work_size()](Self::calc_karatsuba_work_size)). The result array must
@@ -336,44 +351,33 @@ where T: Digit
 
     let min_b_nd0 = b.min(nd0);
     let len_p0 = drop_leading_zeros(nr0, min_b_nd0);
+    // 0 ≤ p0 ≤ r-1
     let p0 = &nr0[..len_p0];
     let len_m1 = drop_leading_zeros(&nr0[min_b_nd0..], b.min(nd0 - min_b_nd0));
+    // 0 ≤ n1 ≤ r-1
     let m1 = &nr0[min_b_nd0..min_b_nd0+len_m1];
+    // 0 ≤ pinf ≤ r-1
     let pinf = &nr0[(2*b).min(nd0)..];
-    let mut len_pm1 = crate::ubig::add::add_big_into(p0, &pinf, pm1).unwrap();
+    // 0 ≤ pm1 ≤ 2(r-1)
+    let len_pm1 = crate::ubig::add::add_big_into(p0, &pinf, pm1).unwrap();
+    // 0 ≤ p1 ≤ 3(r-1)
     let len_p1 = crate::ubig::add::add_big_into(&pm1[..len_pm1], m1, p1).unwrap();
-    let sign_pm1 = less(&pm1[..len_pm1], m1);
-    if sign_pm1
-    {
-        crate::ubig::rsub::rsub_assign_big(&mut pm1[..len_m1], m1);
-        len_pm1 = drop_leading_zeros(pm1, len_m1);
-    }
-    else
-    {
-        crate::ubig::sub::sub_assign_big(&mut pm1[..len_pm1], m1);
-        len_pm1 = drop_leading_zeros(pm1, len_pm1);
-    }
-    let mut len_pm2;
-    let mut sign_pm2;
-    if sign_pm1
-    {
-        sign_pm2 = less(&pinf, &pm1[..len_pm1]);
-        if sign_pm2
+    let (sign_pm1, len_pm1) = sub_assign_big_abs_sign(pm1, len_pm1, m1);
+    let (mut sign_pm2, mut len_pm2) = if sign_pm1
         {
-            len_pm2 = crate::ubig::sub::sub_big_into(&pm1[..len_pm1], pinf, pm2).unwrap();
+            // -(r-1) ≤ pm2 < 0     if sign_pm2
+            //      0 ≤ pm2 ≤ (r-1) if !sign_pm2
+            sub_big_into_abs_sign(pinf, &pm1[..len_pm1], pm2)
         }
         else
         {
-            len_pm2 = crate::ubig::sub::sub_big_into(pinf, &pm1[..len_pm1], pm2).unwrap();
-        }
-    }
-    else
-    {
-        sign_pm2 = false;
-        len_pm2 = crate::ubig::add::add_big_into(&pm1[..len_pm1], pinf, pm2).unwrap();
-    }
+            // 0 ≤ pm2 ≤ 3(r-1)
+            (false, crate::ubig::add::add_big_into(&pm1[..len_pm1], pinf, pm2).unwrap())
+        };
     if !crate::ubig::shl::shl_carry_assign_within_digit(&mut pm2[..len_pm2], 1, T::zero()).is_zero()
     {
+        // -2(r-1) ≤ pm2 < 0      if sign_pm2
+        //       0 ≤ pm2 ≤ 6(r-1) if !sign_pm2
         pm2[len_pm2] = T::one();
         len_pm2 += 1;
     }
@@ -386,16 +390,11 @@ where T: Digit
             len_pm2 += 1;
         }
     }
-    else if less(&pm2[..len_pm2], p0)
-    {
-        crate::ubig::rsub::rsub_assign_big(&mut pm2[..len_p0], p0);
-        len_pm2 = drop_leading_zeros(pm2, len_p0);
-        sign_pm2 = true;
-    }
     else
     {
-        crate::ubig::sub::sub_assign_big(&mut pm2[..len_pm2], p0);
-        len_pm2 = drop_leading_zeros(pm2, len_pm2);
+        let (sign, len) = sub_assign_big_abs_sign(pm2, len_pm2, p0);
+        sign_pm2 = sign;
+        len_pm2 = len;
     }
 
     let min_b_nd1 = b.min(nd1);
@@ -404,38 +403,17 @@ where T: Digit
     let len_n1 = drop_leading_zeros(&nr1[min_b_nd1..], b.min(nd1 - min_b_nd1));
     let n1 = &nr1[min_b_nd1..min_b_nd1+len_n1];
     let qinf = &nr1[(2*b).min(nd1)..];
-    let mut len_qm1 = crate::ubig::add::add_big_into(q0, qinf, qm1).unwrap();
+    let len_qm1 = crate::ubig::add::add_big_into(q0, qinf, qm1).unwrap();
     let len_q1 = crate::ubig::add::add_big_into(&qm1[..len_qm1], n1, q1).unwrap();
-    let sign_qm1 = less(&qm1[..len_qm1], n1);
-    if sign_qm1
-    {
-        crate::ubig::rsub::rsub_assign_big(&mut qm1[..len_n1], n1);
-        len_qm1 = drop_leading_zeros(qm1, len_n1);
-    }
-    else
-    {
-        crate::ubig::sub::sub_assign_big(&mut qm1[..len_qm1], n1);
-        len_qm1 = drop_leading_zeros(qm1, len_qm1);
-    }
-    let mut len_qm2;
-    let mut sign_qm2;
-    if sign_qm1
-    {
-        sign_qm2 = less(&qinf, &qm1[..len_qm1]);
-        if sign_qm2
+    let (sign_qm1, len_qm1) = sub_assign_big_abs_sign(qm1, len_qm1, n1);
+    let (mut sign_qm2, mut len_qm2) = if sign_qm1
         {
-            len_qm2 = crate::ubig::sub::sub_big_into(&qm1[..len_qm1], qinf, qm2).unwrap();
+            sub_big_into_abs_sign(qinf, &qm1[..len_qm1], qm2)
         }
         else
         {
-            len_qm2 = crate::ubig::sub::sub_big_into(qinf, &qm1[..len_qm1], qm2).unwrap();
-        }
-    }
-    else
-    {
-        sign_qm2 = false;
-        len_qm2 = crate::ubig::add::add_big_into(&qm1[..len_qm1], qinf, qm2).unwrap();
-    }
+            (false, crate::ubig::add::add_big_into(&qm1[..len_qm1], qinf, qm2).unwrap())
+        };
     if !crate::ubig::shl::shl_carry_assign_within_digit(&mut qm2[..len_qm2], 1, T::zero()).is_zero()
     {
         qm2[len_qm2] = T::one();
@@ -450,16 +428,11 @@ where T: Digit
             len_qm2 += 1;
         }
     }
-    else if less(&qm2[..len_qm2], q0)
-    {
-        crate::ubig::rsub::rsub_assign_big(&mut qm2[..len_q0], q0);
-        len_qm2 = drop_leading_zeros(qm2, len_q0);
-        sign_qm2 = true;
-    }
     else
     {
-        crate::ubig::sub::sub_assign_big(&mut qm2[..len_qm2], q0);
-        len_qm2 = drop_leading_zeros(qm2, len_qm2);
+        let (sign, len) = sub_assign_big_abs_sign(qm2, len_qm2, q0);
+        sign_qm2 = sign;
+        len_qm2 = len;
     }
 
     let mut len_r1 = mul_big_into_with_work(&p1[..len_p1], &q1[..len_q1], r1, new_work);
@@ -489,17 +462,11 @@ rm2[len_rm2..].fill(T::zero());
         }
         sign_r3 = true;
     }
-    else if less(&r3[..len_r3], &r1[..len_r1])
-    {
-        crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r1], &r1[..len_r1]);
-        len_r3 = drop_leading_zeros(r3, len_r1);
-        sign_r3 = true;
-    }
     else
     {
-        crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r1[..len_r1]);
-        len_r3 = drop_leading_zeros(r3, len_r3);
-        sign_r3 = false;
+        let (sign, len) = sub_assign_big_abs_sign(r3, len_r3, &r1[..len_r1]);
+        sign_r3 = sign;
+        len_r3 = len;
     }
     crate::ubig::div::div_assign_digit(&mut r3[..len_r3], three);
     len_r3 = drop_leading_zeros(r3, len_r3);
@@ -532,17 +499,11 @@ rm2[len_rm2..].fill(T::zero());
         }
         sign_r2 = true;
     }
-    else if less(&r2[..len_r2], &r0[..len_r0])
-    {
-        crate::ubig::rsub::rsub_assign_big(&mut r2[..len_r0], &r0[..len_r0]);
-        len_r2 = drop_leading_zeros(r2, len_r0);
-        sign_r2 = true;
-    }
     else
     {
-        crate::ubig::sub::sub_assign_big(&mut r2[..len_r2], &r0[..len_r0]);
-        len_r2 = drop_leading_zeros(r2, len_r2);
-        sign_r2 = false;
+        let (sign, len) = sub_assign_big_abs_sign(r2, len_r2, &r0[..len_r0]);
+        sign_r2 = sign;
+        len_r2 = len;
     }
     if sign_r2 != sign_r3
     {
@@ -554,16 +515,11 @@ rm2[len_rm2..].fill(T::zero());
         }
         sign_r3 = sign_r2;
     }
-    else if less(&r3[..len_r3], &r2[..len_r2])
-    {
-        crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r2], &r2[..len_r2]);
-        len_r3 = drop_leading_zeros(r3, len_r2);
-    }
     else
     {
-        crate::ubig::sub::sub_assign_big(&mut r3[..len_r3], &r2[..len_r2]);
-        len_r3 = drop_leading_zeros(r3, len_r3);
-        sign_r3 = !sign_r3 && len_r3 != 0;
+        let (sign, len) = sub_assign_big_abs_sign(r3, len_r3, &r2[..len_r2]);
+        sign_r3 = !(sign_r3 ^ sign) && len != 0;
+        len_r3 = len;
     }
     crate::ubig::shr::shr_carry_assign_within_digit(&mut r3[..len_r3], 1, T::zero());
     len_r3 = drop_leading_zeros(r3, len_r3);
@@ -624,7 +580,6 @@ rm2[len_rm2..].fill(T::zero());
 
     drop_leading_zeros(result, n)
 }
-
 
 #[cfg(test)]
 mod tests
@@ -1045,5 +1000,13 @@ mod tests
         let nr_digits = mul_big_toom3_into(&n, &m, &mut prod, &mut work);
         assert_eq!(nr_digits, 10);
         assert_eq!(prod, [BinaryDigit(0x01), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0xfe), BinaryDigit(0xff), BinaryDigit(0xff), BinaryDigit(0xff), BinaryDigit(0xff)]);
+
+        let n = [DecimalDigit(0u8), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(1)];
+        let m = [DecimalDigit(0u8), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(1)];
+        let mut prod = vec![DecimalDigit(0); 14];
+        let mut work = vec![DecimalDigit(0); 50];
+        let nr_digits = mul_big_toom3_into(&n, &m, &mut prod, &mut work);
+        assert_eq!(nr_digits, 13);
+        assert_eq!(prod, [DecimalDigit(0u8), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0), DecimalDigit(1), DecimalDigit(0)]);
     }
 }
