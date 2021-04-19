@@ -37,6 +37,11 @@ pub trait Digit:
     /// The maximum value a digit can take
     const MAX: Self;
 
+    /// Convert a single bit `bit` to a digit (`true` converted to 1, `false` to 0)
+    fn from_bit(bit: bool) -> Self
+    {
+        if bit { Self::one() } else { Self::zero() }
+    }
     /// Convert a string `s` describing a number in base `base` to a digit
     fn from_base_str(s: &str, base: u32) -> Result<Self>;
     /// Convert a string `s` describing a number in hexadecimal base to a digit

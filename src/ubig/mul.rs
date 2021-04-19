@@ -231,14 +231,14 @@ where T: Digit
     // Now calculate z1 = low0*high1 + high0*low1
     if sign0 ^ sign1
     {
-        nz1 = nz1.max(nz0);
-        if crate::ubig::add::add_assign_big(&mut z1[..nz1], &z0[..nz0])
+        nz1 = nz1.max(nz0).max(nz2);
+        let carry0 = crate::ubig::add::add_assign_big(&mut z1[..nz1], &z0[..nz0]);
+        let carry2 = crate::ubig::add::add_assign_big(&mut z1[..nz1], &z2[..nz2]);
+        if carry0
         {
-            z1[nz1] = T::one();
-            nz1 += 1;
+            crate::ubig::add::inc_assign(&mut result[split+nz1..]);
         }
-        nz1 = nz1.max(nz2);
-        if crate::ubig::add::add_assign_big(&mut z1[..nz1], &z2[..nz2])
+        if carry2
         {
             crate::ubig::add::inc_assign(&mut result[split+nz1..]);
         }
@@ -451,39 +451,34 @@ rm2[len_rm2..].fill(T::zero());
     let r3 = rm2;
     let mut len_r3 = len_rm2;
     let mut sign_r3;
+    let mut carry;
     if sign_rm2
     {
         len_r3 = len_r3.max(len_r1);
-        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r1[..len_r1])
-        {
-            r3[len_r3] = T::one();
-            len_r3 += 1;
-        }
+        carry = crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r1[..len_r1]);
         sign_r3 = true;
     }
     else
     {
         let (sign, len) = sub_assign_big_abs_sign(r3, len_r3, &r1[..len_r1]);
-        sign_r3 = sign;
         len_r3 = len;
+        sign_r3 = sign;
+        carry = false;
     }
-    crate::ubig::div::div3_assign(&mut r3[..len_r3]);
+    crate::ubig::div::div3_carry_assign(&mut r3[..len_r3], T::from_bit(carry));
     len_r3 = drop_leading_zeros(r3, len_r3);
     if sign_rm1
     {
         len_r1 = len_r1.max(len_rm1);
-        if crate::ubig::add::add_assign_big(&mut r1[..len_r1], &rm1[..len_rm1])
-        {
-            r1[len_r1] = T::one();
-            len_r1 += 1;
-        }
+        carry = crate::ubig::add::add_assign_big(&mut r1[..len_r1], &rm1[..len_rm1]);
     }
     else
     {
         crate::ubig::sub::sub_assign_big(&mut r1[..len_r1], &rm1[..len_rm1]);
         len_r1 = drop_leading_zeros(r1, len_r1);
+        carry = false;
     };
-    crate::ubig::shr::shr_carry_assign_within_digit(&mut r1[..len_r1], 1, T::zero());
+    crate::ubig::shr::shr_carry_assign_within_digit(&mut r1[..len_r1], 1, T::from_bit(carry));
     len_r1 = drop_leading_zeros(r1, len_r1);
     let r2 = rm1;
     let mut len_r2 = len_rm1;
@@ -507,20 +502,17 @@ rm2[len_rm2..].fill(T::zero());
     if sign_r2 != sign_r3
     {
         len_r3 = len_r3.max(len_r2);
-        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r2[..len_r2])
-        {
-            r3[len_r3] = T::one();
-            len_r3 += 1;
-        }
+        carry = crate::ubig::add::add_assign_big(&mut r3[..len_r3], &r2[..len_r2]);
         sign_r3 = sign_r2;
     }
     else
     {
         let (sign, len) = sub_assign_big_abs_sign(r3, len_r3, &r2[..len_r2]);
-        sign_r3 = !(sign_r3 ^ sign) && len != 0;
         len_r3 = len;
+        sign_r3 = !(sign_r3 ^ sign) && len != 0;
+        carry = false;
     }
-    crate::ubig::shr::shr_carry_assign_within_digit(&mut r3[..len_r3], 1, T::zero());
+    crate::ubig::shr::shr_carry_assign_within_digit(&mut r3[..len_r3], 1, T::from_bit(carry));
     len_r3 = drop_leading_zeros(r3, len_r3);
     if !sign_r3
     {
