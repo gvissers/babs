@@ -313,6 +313,33 @@ where T: DigitStorage
     }
 }
 
+impl DecimalDigit<u64>
+{
+    /// Compute the quotient and remainder of dividing a wide digit `n` by the base of this number,
+    /// i.e. compute `(n / DECIMAL_RADIX, n % DECIMAL_RADIX)`. Normally one would use a builtin
+    /// division for this, but this is very slow since the compiler is not able to replace the
+    /// division by a constant with a multiplication by its inverse for `u128`. Even using the
+    /// `x86_64` builtin `divq` instruction is slow, so we roll our own using only multiplications.
+    fn div_rem_base(n: u128) -> (u64, u64)
+    {
+        // Overview:
+        //   * Shift `n` right to divide by 2^18
+        //   * Then compute the upper bits of `n` * (2**154 / 5**18) discarding lower bits
+        //     to compute the quotient `q` = `n` / 10**18
+        //   * Compute the remainder as `n` - 10**18 * q
+        const SCALE_LOW: u128 = 13406782876194489480; // scale = (SCALE_HIGH, SCALE_LOW) = ceil(2**154 / 5**18)
+        const SCALE_HIGH: u128 = 324518553658426;     // FIXME? this should be calculated from DECIMAL_RADIX
+
+        let tmp = n >> Self::NR_DECIMAL_PLACES;
+        let (tmp_low, tmp_high) = (tmp & 0xffffffffffffffff, tmp >> 64);
+        let carry = (SCALE_LOW * tmp_low) >> 64;
+        let carry = (SCALE_LOW * tmp_high + SCALE_HIGH * tmp_low + carry) >> 64;
+        let quot = (SCALE_HIGH * tmp_high + carry) >> 26;
+        let rem = n - quot * u64::DECIMAL_RADIX as u128;
+        (quot as u64, rem as u64)
+    }
+}
+
 macro_rules! impl_digit_decimal
 {
     ($dt:ty, $wdt:ty) => {
@@ -465,7 +492,154 @@ macro_rules! impl_digit_decimal
 impl_digit_decimal!(u8, u16);
 impl_digit_decimal!(u16, u32);
 impl_digit_decimal!(u32, u64);
-impl_digit_decimal!(u64, u128);
+
+impl Digit for DecimalDigit<u64>
+{
+    const MAX: Self = DecimalDigit(u64::DECIMAL_RADIX - 1);
+
+    #[inline]
+    fn from_base_str(s: &str, base: u32) -> Result<Self>
+    {
+        let d = <u64>::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
+        if d < u64::DECIMAL_RADIX
+        {
+            Ok(DecimalDigit(d))
+        }
+        else
+        {
+            Err(Error::InvalidNumber)
+        }
+    }
+
+    #[inline]
+    fn max_shift(&self) -> u32
+    {
+        let shift = self.0.leading_zeros() - Self::MAX.0.leading_zeros();
+        if (self.0 << shift) <= Self::MAX.0 { shift } else { shift - 1 }
+    }
+
+    #[inline]
+    fn inc(&mut self) -> bool
+    {
+        if self.0 == u64::DECIMAL_RADIX - 1
+        {
+            self.0 = 0;
+            true
+        }
+        else
+        {
+            self.0 += 1;
+            false
+        }
+    }
+
+    #[inline]
+    fn dec(&mut self) -> bool
+    {
+        if self.0 == 0
+        {
+            self.0 = u64::DECIMAL_RADIX - 1;
+            true
+        }
+        else
+        {
+            self.0 -= 1;
+            false
+        }
+    }
+
+    #[inline]
+    fn add_carry_assign(&mut self, other: Self, carry: bool) -> bool
+    {
+        self.0 += other.0 + carry as u64;
+        if self.0 >= u64::DECIMAL_RADIX
+        {
+            self.0 -= u64::DECIMAL_RADIX;
+            true
+        }
+        else
+        {
+            false
+        }
+    }
+
+    #[inline]
+    fn sub_carry_assign(&mut self, other: Self, carry: bool) -> bool
+    {
+        let diff = other.0 + carry as u64;
+        if self.0 < diff
+        {
+            self.0 += u64::DECIMAL_RADIX - diff;
+            true
+        }
+        else
+        {
+            self.0 -= diff;
+            false
+        }
+    }
+
+    #[inline]
+    fn shl_carry_assign(&mut self, shift: usize, carry: Self) -> Self
+    {
+        let tmp = (self.0 as u128) << shift;
+        let (q, r) = Self::div_rem_base(tmp);
+        self.0 = r + carry.0;
+        DecimalDigit(q)
+    }
+
+    #[inline]
+    fn shr_carry_assign(&mut self, shift: usize, carry: Self) -> Self
+    {
+        let mask = (1 << (shift - 1)) | ((1 << (shift - 1)) - 1);
+        let tmp = carry.0 as u128 * u64::DECIMAL_RADIX as u128 + self.0 as u128;
+        self.0 = (tmp >> shift) as u64;
+        DecimalDigit((tmp & mask) as u64)
+    }
+
+    #[inline]
+    fn mul_carry_assign(&mut self, fac: Self, carry: Self) -> Self
+    {
+        let tmp = self.0 as u128 * fac.0 as u128 + carry.0 as u128;
+        let (q, r) = Self::div_rem_base(tmp);
+        self.0 = r;
+        DecimalDigit(q)
+    }
+
+    #[inline]
+    fn div_carry_assign(&mut self, fac: Self, carry: Self) -> Self
+    {
+        let tmp = carry.0 as u128 * u64::DECIMAL_RADIX as u128 + self.0 as u128;
+        self.0 = (tmp / fac.0 as u128) as u64;
+        DecimalDigit((tmp % fac.0 as u128) as u64)
+    }
+
+    #[inline]
+    fn div3_carry_assign(&mut self, carry: Self) -> Self
+    {
+        let tmp = carry.0 as u128 * u64::DECIMAL_RADIX as u128 + self.0 as u128;
+        self.0 = (tmp / 3) as u64;
+        DecimalDigit((tmp % 3) as u64)
+    }
+
+    #[inline]
+    fn add_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self
+    {
+        let tmp = self.0 as u128 + fac0.0 as u128 * fac1.0 as u128 + carry.0 as u128;
+        let (q, r) = Self::div_rem_base(tmp);
+        self.0 = r;
+        DecimalDigit(q)
+    }
+
+    #[inline]
+    fn sub_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self
+    {
+        let tmp = fac0.0 as u128 * fac1.0 as u128 + carry.0 as u128;
+        let (q, r) = Self::div_rem_base(tmp);
+        let underflow = self.sub_carry_assign(DecimalDigit(r), false);
+        DecimalDigit(q + underflow as u64)
+    }
+}
 
 impl<T> num_traits::Zero for DecimalDigit<T>
 where T: num_traits::Zero
@@ -516,7 +690,7 @@ where T: std::ops::Mul<Output=T>
 #[cfg(test)]
 mod tests
 {
-    use super::{BinaryDigit, DecimalDigit, Digit};
+    use super::*;
 
     #[test]
     fn test_max_shift_binary()
@@ -1481,5 +1655,33 @@ mod tests
             assert_eq!(d, DecimalDigit(case.4), "wrong digit in u32 case {}", idx+1);
             assert_eq!(carry, DecimalDigit(case.5), "wrong carry in u32 case {}", idx+1);
         }
+    }
+
+    #[test]
+    fn test_div_rem_base_decimal64()
+    {
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(0);
+        assert_eq!(q, 0);
+        assert_eq!(r, 0);
+
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(986_132_876_982_192_889);
+        assert_eq!(q, 0);
+        assert_eq!(r, 986_132_876_982_192_889);
+
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(1_000_000_000_000_000_000);
+        assert_eq!(q, 1);
+        assert_eq!(r, 0);
+
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(2_000_000_000_000_000_001);
+        assert_eq!(q, 2);
+        assert_eq!(r, 1);
+
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(2_999_999_999_999_999_999);
+        assert_eq!(q, 2);
+        assert_eq!(r, 999_999_999_999_999_999);
+
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(999_999_999_999_999_999_999_999_999_999_999_999);
+        assert_eq!(q, 999_999_999_999_999_999);
+        assert_eq!(r, 999_999_999_999_999_999);
     }
 }
