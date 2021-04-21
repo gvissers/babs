@@ -194,6 +194,56 @@ impl<T> UBig<T>
     }
 }
 
+impl<T> UBig<BinaryDigit<T>>
+{
+    /// Convert this binary big number to decimal form.
+    pub fn to_decimal(&self) -> UBig<DecimalDigit<T>>
+    where T: DigitStorage, DecimalDigit<T>: Digit
+    {
+        match self.nr_digits()
+        {
+            0 => UBig::zero(),
+            1 => UBig::<DecimalDigit<T>>::from(self.digits[0].0),
+            n => {
+                let pow_max = 8 * std::mem::size_of::<usize>() as u32 - n.leading_zeros() - 1;
+                let mut scale = (UBig::one() << BinaryDigit::<T>::NR_BITS/2) << BinaryDigit::<T>::NR_BITS/2;
+                let mut scales = vec![scale.clone()];
+                for _ in 1..pow_max
+                {
+                    scale = &scale * &scale;
+                    scales.push(scale.clone());
+                }
+                Self::build_decimal(&self.digits, &scales)
+            }
+        }
+    }
+
+    /// Convert the binary big number represented by digits `digits` to decimal form. Array
+    /// `scales` contains successive squares of the radix of the binary number, expressed in
+    /// decimal digits.
+    fn build_decimal(digits: &[BinaryDigit<T>], scales: &[UBig<DecimalDigit<T>>]) -> UBig<DecimalDigit<T>>
+    where T: DigitStorage, DecimalDigit<T>: Digit
+    {
+        match digits.len()
+        {
+            0 => UBig::zero(),
+            1 => UBig::<DecimalDigit<T>>::from(digits[0].0),
+            n => {
+                let pow_idx = 8 * std::mem::size_of::<usize>() - n.leading_zeros() as usize - 2;
+                let split = 1 << pow_idx;
+                let mut nlow = split;
+                while nlow > 0 && digits[nlow-1].is_zero()
+                {
+                    nlow -= 1;
+                }
+                let low = Self::build_decimal(&digits[..nlow], scales);
+                let high = Self::build_decimal(&digits[split..], scales);
+                high * &scales[pow_idx] + low
+            }
+        }
+    }
+}
+
 impl<T> Zero for UBig<T>
 where T: Digit
 {
@@ -372,11 +422,11 @@ where T: DigitStorage + std::fmt::UpperHex
 }
 
 impl<T> std::fmt::Display for UBig<BinaryDigit<T>>
+where T: DigitStorage + std::fmt::Display, DecimalDigit<T>: Digit
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
     {
-        // FIXME
-        write!(f, "<unimplemented>")
+        self.to_decimal().fmt(f)
     }
 }
 
@@ -1577,5 +1627,46 @@ mod test
         let n = UBig::new(vec![DecimalDigit(1u16), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)]);
         let s = format!("{:_>20}", n);
         assert_eq!(s, "_______4000300020001");
+    }
+
+    #[test]
+    fn test_binary_to_decimal()
+    {
+        let n = UBig::<BinaryDigit<u8>>::new(vec![]);
+        let m = n.to_decimal();
+        assert_eq!(m.digits(), &[]);
+
+        let n = UBig::new(vec![BinaryDigit(75u8)]);
+        let m = n.to_decimal();
+        assert_eq!(m.digits(), &[DecimalDigit(75)]);
+
+        let n = UBig::new(vec![BinaryDigit(203u8)]);
+        let m = n.to_decimal();
+        assert_eq!(m.digits(), &[DecimalDigit(3), DecimalDigit(2)]);
+
+        let n = UBig::new(vec![BinaryDigit(0xacu8), BinaryDigit(0x12), BinaryDigit(0x73)]);
+        let m = n.to_decimal();
+        assert_eq!(m.digits(), &[DecimalDigit(20), DecimalDigit(14), DecimalDigit(54), DecimalDigit(7)]);
+
+        let n = UBig::new(vec![BinaryDigit(0x01u64), BinaryDigit(0x02), BinaryDigit(0x03)]);
+        let m = n.to_decimal();
+        assert_eq!(m.digits(), &[
+            DecimalDigit(17_310_442_723_737_601),
+            DecimalDigit(847_100_762_815_390_427),
+            DecimalDigit(1_020)
+        ]);
+
+        let n = UBig::new(vec![
+            BinaryDigit(0x29afaf36281f19adu64),
+            BinaryDigit(0x9fafffe73627f24d),
+            BinaryDigit(0xdeeef45261ac4524)
+        ]);
+        let m = n.to_decimal();
+        assert_eq!(m.digits(), &[
+            DecimalDigit(816_494_390_609_385_901),
+            DecimalDigit(66_315_393_028_716_848),
+            DecimalDigit(311_443_965_039_676_465),
+            DecimalDigit(5_466)
+        ]);
     }
 }
