@@ -212,9 +212,9 @@ where T: Digit
     let split = (nmax + 1) / 2;
 
     let (low0, high0) = nr0.split_at(split.min(n0));
-    let nlow0 = drop_leading_zeros(low0, split);
+    let nlow0 = drop_leading_zeros(low0, low0.len());
     let (low1, high1) = nr1.split_at(split.min(n1));
-    let nlow1 = drop_leading_zeros(low1, split);
+    let nlow1 = drop_leading_zeros(low1, low1.len());
 
     let (diff0, diff1) = result.split_at_mut(split);
     let (sign0, ndiff0) = sub_big_into_abs_sign(&low0[..nlow0], &high0, diff0);     // low0 - high0
