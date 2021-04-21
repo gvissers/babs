@@ -1,4 +1,5 @@
 use crate::digit::Digit;
+use crate::ubig::support::drop_leading_zeros;
 
 /// The minimum size of a number (in digits) for Karatsuba multiplication. Should be at least 4.
 const KARATSUBA_CUTOFF: usize = 20;
@@ -265,18 +266,6 @@ where T: Digit
     assert!(!carry);
 
     drop_leading_zeros(result, n0+n1)
-}
-
-#[inline]
-fn drop_leading_zeros<T>(nr: &[T], len: usize) -> usize
-where T: Digit
-{
-    let mut n = len;
-    while n > 0 && nr[n-1].is_zero()
-    {
-        n -= 1
-    }
-    n
 }
 
 /// Calculate the maximum size of the scratch array necessary to perform Toom-Cook multiplication

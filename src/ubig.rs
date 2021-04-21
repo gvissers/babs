@@ -6,6 +6,7 @@ mod rsub;
 mod shl;
 mod shr;
 mod sub;
+mod support;
 
 use crate::digit::{BinaryDigit, Digit, DigitStorage, DecimalDigit};
 use crate::result::{Error, Result};
@@ -50,16 +51,11 @@ impl<T> UBig<T>
     fn drop_leading_zeros(&mut self)
     where T: Zero
     {
-        while let Some(d) = self.digits.last()
+        let cur_n = self.digits.len();
+        let new_n = support::drop_leading_zeros(&self.digits, self.digits.len());
+        if new_n < cur_n
         {
-            if d.is_zero()
-            {
-                self.digits.pop();
-            }
-            else
-            {
-                break;
-            }
+            self.digits.truncate(new_n);
         }
     }
 
@@ -207,7 +203,7 @@ impl<T> UBig<BinaryDigit<T>>
             1 => UBig::<DecimalDigit<T>>::from(self.digits[0].0),
             n => {
                 let pow_max = 8 * std::mem::size_of::<usize>() as u32 - n.leading_zeros() - 1;
-                let mut scale = (UBig::one() << BinaryDigit::<T>::NR_BITS/2) << BinaryDigit::<T>::NR_BITS/2;
+                let mut scale = (UBig::one() << (BinaryDigit::<T>::NR_BITS/2)) << (BinaryDigit::<T>::NR_BITS/2);
                 let mut scales = vec![scale.clone()];
                 for _ in 1..pow_max
                 {
@@ -232,11 +228,7 @@ impl<T> UBig<BinaryDigit<T>>
             n => {
                 let pow_idx = 8 * std::mem::size_of::<usize>() - n.leading_zeros() as usize - 2;
                 let split = 1 << pow_idx;
-                let mut nlow = split;
-                while nlow > 0 && digits[nlow-1].is_zero()
-                {
-                    nlow -= 1;
-                }
+                let nlow = support::drop_leading_zeros(digits, split);
                 let low = Self::build_decimal(&digits[..nlow], scales);
                 let high = Self::build_decimal(&digits[split..], scales);
                 high * &scales[pow_idx] + low
