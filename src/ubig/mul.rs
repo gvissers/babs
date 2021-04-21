@@ -170,7 +170,7 @@ fn sub_big_into_abs_sign<T>(nr0: &[T], nr1: &[T], abs_diff: &mut[T]) -> (bool, u
 where T: Digit
 {
     debug_assert!(abs_diff.len() >= nr0.len().max(nr1.len()));
-    if less(nr0, nr1)
+    if crate::ubig::cmp::lt(nr0, nr1)
     {
         (true, crate::ubig::sub::sub_big_into(nr1, nr0, abs_diff).unwrap())
     }
@@ -183,7 +183,7 @@ where T: Digit
 fn sub_assign_big_abs_sign<T>(nr0: &mut [T], len0: usize, nr1: &[T]) -> (bool, usize)
 where T: Digit
 {
-    if less(&nr0[..len0], nr1)
+    if crate::ubig::cmp::lt(&nr0[..len0], nr1)
     {
         crate::ubig::rsub::rsub_assign_big(&mut nr0[..nr1.len()], nr1);
         (true, drop_leading_zeros(nr0, nr1.len()))
@@ -243,7 +243,7 @@ where T: Digit
             crate::ubig::add::inc_assign(&mut result[split+nz1..]);
         }
     }
-    else if less(&z1[..nz1], &z0[..nz0])
+    else if crate::ubig::cmp::lt(&z1[..nz1], &z0[..nz0])
     {
         crate::ubig::rsub::rsub_assign_big(&mut z1[..nz0], &z0[..nz0]);
         nz1 = drop_leading_zeros(z1, nz0).max(nz2);
@@ -256,7 +256,7 @@ where T: Digit
     {
         crate::ubig::sub::sub_assign_big(z1, &z0[..nz0]);
         nz1 = drop_leading_zeros(z1, nz1);
-        debug_assert!(!less(&z2[..nz2], &z1[..nz1]), "z1 < 0");
+        debug_assert!(!crate::ubig::cmp::lt(&z2[..nz2], &z1[..nz1]), "z1 < 0");
         crate::ubig::rsub::rsub_assign_big(&mut z1[..nz2], &z2[..nz2]);
         nz1 = drop_leading_zeros(z1, nz2);
     }
@@ -265,13 +265,6 @@ where T: Digit
     assert!(!carry);
 
     drop_leading_zeros(result, n0+n1)
-}
-
-#[inline]
-fn less<T>(nr0: &[T], nr1: &[T]) -> bool
-where T: Digit
-{
-    nr0.len() < nr1.len() || (nr0.len() == nr1.len() && nr0.iter().rev().lt(nr1.iter().rev()))
 }
 
 #[inline]
@@ -528,7 +521,7 @@ rm2[len_rm2..].fill(T::zero());
             len_r3 += 1;
         }
     }
-    else if less(&r3[..len_r3], r4)
+    else if crate::ubig::cmp::lt(&r3[..len_r3], r4)
     {
         len_r3 = len_r4;
         crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], r4);

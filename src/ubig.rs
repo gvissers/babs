@@ -1,4 +1,5 @@
 mod add;
+mod cmp;
 mod div;
 mod mul;
 mod rsub;
@@ -464,10 +465,10 @@ where T: Eq + Ord
 impl<T> Ord for UBig<T>
 where T: Eq + Ord
 {
+    #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering
     {
-        self.nr_digits().cmp(&other.nr_digits())
-            .then_with(|| self.digits.iter().rev().cmp(other.digits.iter().rev()))
+        cmp::cmp(&self.digits, &other.digits)
     }
 }
 
