@@ -102,6 +102,42 @@ where T: Digit
     }
 }
 
+/// Subtract `nr1` from `nr0`, leaving the absolute value of the difference in `nr0`. Returns the
+/// sign of the difference, and the number of digits it contains. The initial length of the number
+/// stored in `nr0` is `len0` digits, but the array should be large enough to compute the difference,
+/// i.e. `nr0.len() ≥ max(len, nr1.len())`.
+pub fn sub_assign_big_abs_sign<T>(nr0: &mut [T], len0: usize, nr1: &[T]) -> (bool, usize)
+where T: Digit
+{
+    if crate::ubig::cmp::lt(&nr0[..len0], nr1)
+    {
+        crate::ubig::rsub::rsub_assign_big(&mut nr0[..nr1.len()], nr1);
+        (true, crate::ubig::support::drop_leading_zeros(nr0, nr1.len()))
+    }
+    else
+    {
+        crate::ubig::sub::sub_assign_big(&mut nr0[..len0], nr1);
+        (false, crate::ubig::support::drop_leading_zeros(nr0, len0))
+    }
+}
+
+/// Subtract `nr1` from `nr0`, and store the absolute value of the difference in `abs_diff`.
+/// Return the sign of the difference, and the number of digits it contains. `abs_diff` should
+/// be able to hold at least as many digits as the longest of `nr0` and `nr1`.
+pub fn sub_big_into_abs_sign<T>(nr0: &[T], nr1: &[T], abs_diff: &mut[T]) -> (bool, usize)
+where T: Digit
+{
+    debug_assert!(abs_diff.len() >= nr0.len().max(nr1.len()));
+    if crate::ubig::cmp::lt(nr0, nr1)
+    {
+        (true, sub_big_into(nr1, nr0, abs_diff).unwrap())
+    }
+    else
+    {
+        (false, sub_big_into(nr0, nr1, abs_diff).unwrap())
+    }
+}
+
 #[cfg(test)]
 mod tests
 {
@@ -578,5 +614,249 @@ mod tests
         let mut diff = [BinaryDigit(0); 3];
         let n = sub_big_into(&nr0, &nr1, &mut diff);
         assert_eq!(n, Err(Error::Underflow));
+    }
+
+    #[test]
+    fn test_sub_assign_big_abs_sign_binary()
+    {
+        let mut nr0: [BinaryDigit<u8>; 0] = [];
+        let nr1: [BinaryDigit<u8>; 0] = [];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 0, &nr1);
+        assert_eq!(sign, false);
+        assert_eq!(len, 0);
+        assert_eq!(nr0, []);
+
+        let mut nr0 = [BinaryDigit(1u8)];
+        let nr1: [BinaryDigit<u8>; 0] = [];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 1, &nr1);
+        assert_eq!(sign, false);
+        assert_eq!(len, 1);
+        assert_eq!(nr0, [BinaryDigit(1)]);
+
+        let mut nr0 = [BinaryDigit(0u8)];
+        let nr1 = [BinaryDigit(1u8)];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 0, &nr1);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(nr0, [BinaryDigit(1)]);
+
+        let mut nr0 = [BinaryDigit(0x40u16), BinaryDigit(0x43)];
+        let nr1 = [BinaryDigit(0x41u16), BinaryDigit(0x43)];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 2, &nr1);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(nr0, [BinaryDigit(1), BinaryDigit(0)]);
+
+        let mut nr0 = [
+            BinaryDigit(0x672288af5189ff45u64),
+            BinaryDigit(0xff453615af3f724d),
+            BinaryDigit(0x282786fdf35eca)
+        ];
+        let nr1 = [BinaryDigit(0x71898279dfacdf33u64), BinaryDigit(0x6fd527ade516ee12)];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 3, &nr1);
+        assert_eq!(sign, false);
+        assert_eq!(len, 3);
+        assert_eq!(nr0, [
+            BinaryDigit(0xf599063571dd2012),
+            BinaryDigit(0x8f700e67ca28843a),
+            BinaryDigit(0x282786fdf35eca)
+        ]);
+
+        let mut nr0 = [BinaryDigit(0x71898279dfacdf33u64), BinaryDigit(0x6fd527ade516ee12), BinaryDigit(0)];
+        let nr1 = [BinaryDigit(0x672288af5189ff45u64), BinaryDigit(0xff453615af3f724d), BinaryDigit(0x282786fdf35eca)];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 2, &nr1);
+        assert_eq!(sign, true);
+        assert_eq!(len, 3);
+        assert_eq!(nr0, [
+            BinaryDigit(0xf599063571dd2012),
+            BinaryDigit(0x8f700e67ca28843a),
+            BinaryDigit(0x282786fdf35eca)
+        ]);
+    }
+
+    #[test]
+    fn test_sub_assign_big_abs_sign_decimal()
+    {
+        let mut nr0: [DecimalDigit<u8>; 0] = [];
+        let nr1: [DecimalDigit<u8>; 0] = [];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 0, &nr1);
+        assert_eq!(sign, false);
+        assert_eq!(len, 0);
+        assert_eq!(nr0, []);
+
+        let mut nr0 = [DecimalDigit(1u8)];
+        let nr1: [DecimalDigit<u8>; 0] = [];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 1, &nr1);
+        assert_eq!(sign, false);
+        assert_eq!(len, 1);
+        assert_eq!(nr0, [DecimalDigit(1)]);
+
+        let mut nr0 = [DecimalDigit(0u8)];
+        let nr1 = [DecimalDigit(1u8)];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 0, &nr1);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(nr0, [DecimalDigit(1)]);
+
+        let mut nr0 = [DecimalDigit(4_000u16), DecimalDigit(4_321)];
+        let nr1 = [DecimalDigit(4_001u16), DecimalDigit(4_321)];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 2, &nr1);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(nr0, [DecimalDigit(1), DecimalDigit(0)]);
+
+        let mut nr0 = [
+            DecimalDigit(748_918_999_164_244_199u64),
+            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(123)
+        ];
+        let nr1 = [DecimalDigit(983_299_918_982_872_456u64), DecimalDigit(564_555_736_893_987_342)];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 3, &nr1);
+        assert_eq!(sign, false);
+        assert_eq!(len, 3);
+        assert_eq!(nr0, [
+            DecimalDigit(765_619_080_181_371_743),
+            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(122)
+        ]);
+
+        let mut nr0 = [
+            DecimalDigit(983_299_918_982_872_456u64),
+            DecimalDigit(564_555_736_893_987_342),
+            DecimalDigit(0)
+        ];
+        let nr1 = [
+            DecimalDigit(748_918_999_164_244_199u64),
+            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(123)
+        ];
+        let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 3, &nr1);
+        assert_eq!(sign, true);
+        assert_eq!(len, 3);
+        assert_eq!(nr0, [
+            DecimalDigit(765_619_080_181_371_743),
+            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(122)
+        ]);
+    }
+
+    #[test]
+    fn test_sub_big_into_abs_sign_binary()
+    {
+        let nr0: [BinaryDigit<u8>; 0] = [];
+        let nr1: [BinaryDigit<u8>; 0] = [];
+        let mut abs_diff = [BinaryDigit(0); 1];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, false);
+        assert_eq!(len, 0);
+        assert_eq!(abs_diff, [BinaryDigit(0)]);
+
+        let nr0 = [BinaryDigit(1u8)];
+        let nr1: [BinaryDigit<u8>; 0] = [];
+        let mut abs_diff = [BinaryDigit(0); 1];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, false);
+        assert_eq!(len, 1);
+        assert_eq!(abs_diff, [BinaryDigit(1)]);
+
+        let nr0: [BinaryDigit<u8>; 0] = [];
+        let nr1 = [BinaryDigit(1u8)];
+        let mut abs_diff = [BinaryDigit(0); 1];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(abs_diff, [BinaryDigit(1)]);
+
+        let nr0 = [BinaryDigit(0x40u16), BinaryDigit(0x43)];
+        let nr1 = [BinaryDigit(0x41u16), BinaryDigit(0x43)];
+        let mut abs_diff = [BinaryDigit(0); 2];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(abs_diff, [BinaryDigit(1), BinaryDigit(0)]);
+
+        let nr0 = [BinaryDigit(0x672288af5189ff45u64), BinaryDigit(0xff453615af3f724d), BinaryDigit(0x282786fdf35eca)];
+        let nr1 = [BinaryDigit(0x71898279dfacdf33u64), BinaryDigit(0x6fd527ade516ee12)];
+        let mut abs_diff = [BinaryDigit(0); 3];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, false);
+        assert_eq!(len, 3);
+        assert_eq!(abs_diff, [BinaryDigit(0xf599063571dd2012), BinaryDigit(0x8f700e67ca28843a), BinaryDigit(0x282786fdf35eca)]);
+
+        let nr0 = [BinaryDigit(0x71898279dfacdf33u64), BinaryDigit(0x6fd527ade516ee12)];
+        let nr1 = [BinaryDigit(0x672288af5189ff45u64), BinaryDigit(0xff453615af3f724d), BinaryDigit(0x282786fdf35eca)];
+        let mut abs_diff = [BinaryDigit(0); 3];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, true);
+        assert_eq!(len, 3);
+        assert_eq!(abs_diff, [BinaryDigit(0xf599063571dd2012), BinaryDigit(0x8f700e67ca28843a), BinaryDigit(0x282786fdf35eca)]);
+    }
+
+    #[test]
+    fn test_sub_big_into_abs_sign_decimal()
+    {
+        let nr0: [DecimalDigit<u8>; 0] = [];
+        let nr1: [DecimalDigit<u8>; 0] = [];
+        let mut abs_diff = [DecimalDigit(0); 1];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, false);
+        assert_eq!(len, 0);
+        assert_eq!(abs_diff, [DecimalDigit(0)]);
+
+        let nr0 = [DecimalDigit(1u8)];
+        let nr1: [DecimalDigit<u8>; 0] = [];
+        let mut abs_diff = [DecimalDigit(0); 1];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, false);
+        assert_eq!(len, 1);
+        assert_eq!(abs_diff, [DecimalDigit(1)]);
+
+        let nr0: [DecimalDigit<u8>; 0] = [];
+        let nr1 = [DecimalDigit(1u8)];
+        let mut abs_diff = [DecimalDigit(0); 1];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(abs_diff, [DecimalDigit(1)]);
+
+        let nr0 = [DecimalDigit(4_000u16), DecimalDigit(4_321)];
+        let nr1 = [DecimalDigit(4_001u16), DecimalDigit(4_321)];
+        let mut abs_diff = [DecimalDigit(0); 2];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, true);
+        assert_eq!(len, 1);
+        assert_eq!(abs_diff, [DecimalDigit(1), DecimalDigit(0)]);
+
+        let nr0 = [
+            DecimalDigit(748_918_999_164_244_199u64),
+            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(123)
+        ];
+        let nr1 = [DecimalDigit(983_299_918_982_872_456u64), DecimalDigit(564_555_736_893_987_342)];
+        let mut abs_diff = [DecimalDigit(0); 3];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, false);
+        assert_eq!(len, 3);
+        assert_eq!(abs_diff, [
+            DecimalDigit(765_619_080_181_371_743),
+            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(122)
+        ]);
+
+        let nr0 = [DecimalDigit(983_299_918_982_872_456u64), DecimalDigit(564_555_736_893_987_342)];
+        let nr1 = [
+            DecimalDigit(748_918_999_164_244_199u64),
+            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(123)
+        ];
+        let mut abs_diff = [DecimalDigit(0); 3];
+        let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
+        assert_eq!(sign, true);
+        assert_eq!(len, 3);
+        assert_eq!(abs_diff, [
+            DecimalDigit(765_619_080_181_371_743),
+            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(122)
+        ]);
     }
 }
