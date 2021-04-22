@@ -180,7 +180,7 @@ rm2[len_rm2..].fill(T::zero());
         sign_r3 = sign;
         carry = false;
     }
-    crate::ubig::div::div3_carry_assign(&mut r3[..len_r3], T::from_bit(carry));
+    crate::ubig::div::div3_carry_assign(&mut r3[..len_r3], carry as u8);
     len_r3 = drop_leading_zeros(r3, len_r3);
     if sign_rm1
     {

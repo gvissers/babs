@@ -98,7 +98,7 @@ pub trait Digit:
     /// Divide `carry`*`b` + this digit by 3, where `b` is the base of this digit, and store the
     /// result back into this digit . The remainder of the division is returned as carry. The
     /// divisor `fac` should not be zero, and the `0 ≤ carry < 3`.
-    fn div3_carry_assign(&mut self, carry: Self) -> Self;
+    fn div3_carry_assign(&mut self, carry: u8) -> u8;
 
     /// Add the product of `fac0` and `fac1`, as well as the carry `carry` to this digit, and
     /// return the new carry.
@@ -209,11 +209,11 @@ macro_rules! impl_digit_binary
             }
 
             #[inline]
-            fn div3_carry_assign(&mut self, carry: Self) -> Self
+            fn div3_carry_assign(&mut self, carry: u8) -> u8
             {
-                let tmp = (carry.0 as $wdt << Self::NR_BITS) | self.0 as $wdt;
+                let tmp = (carry as $wdt << Self::NR_BITS) | self.0 as $wdt;
                 self.0 = (tmp / 3) as $dt;
-                BinaryDigit((tmp % 3) as $dt)
+                (tmp % 3) as u8
             }
 
             #[inline]
@@ -321,10 +321,10 @@ impl DecimalDigit<u64>
     /// `x86_64` builtin `divq` instruction is slow, so we roll our own using only multiplications.
     fn div_rem_base(n: u128) -> (u64, u64)
     {
-        /// This effectively computes n * 2**174 / 10**18, and the shifts the result 174 bits to
+        /// This effectively computes n * ceil(2**190 / 10**19), and the shifts the result 190 bits to
         /// the right to compute the quotient q. The remainder is then calculated by subtracting
-        /// q*10**18 from n. The exponent 174 is high enough that this yields the correct result
-        /// for all possible n < 10**36.
+        /// q*10**19 from n. The exponent 190 is high enough that this yields the correct result
+        /// for all possible n < 10**38. (in fact 188 would suffice).
         const SCALE_LOW: u128 = 10779635027931437427; // scale = (SCALE_HIGH, SCALE_LOW) = ceil(2**190 / 10**19)
         const SCALE_HIGH: u128 = 8507059173023461586; // FIXME? this should be calculated from DECIMAL_RADIX
 
@@ -460,11 +460,11 @@ macro_rules! impl_digit_decimal
             }
 
             #[inline]
-            fn div3_carry_assign(&mut self, carry: Self) -> Self
+            fn div3_carry_assign(&mut self, carry: u8) -> u8
             {
-                let tmp = carry.0 as $wdt * <$dt>::DECIMAL_RADIX as $wdt + self.0 as $wdt;
+                let tmp = carry as $wdt * <$dt>::DECIMAL_RADIX as $wdt + self.0 as $wdt;
                 self.0 = (tmp / 3) as $dt;
-                DecimalDigit((tmp % 3) as $dt)
+                (tmp % 3) as u8
             }
 
             #[inline]
@@ -613,11 +613,13 @@ impl Digit for DecimalDigit<u64>
     }
 
     #[inline]
-    fn div3_carry_assign(&mut self, carry: Self) -> Self
+    fn div3_carry_assign(&mut self, carry: u8) -> u8
     {
-        let tmp = carry.0 as u128 * u64::DECIMAL_RADIX as u128 + self.0 as u128;
-        self.0 = (tmp / 3) as u64;
-        DecimalDigit((tmp % 3) as u64)
+        const BASE_DIV_3: u64 = DecimalDigit::<u64>::MAX.0 / 3;
+        self.0 += carry as u64;
+        let rem = self.0 % 3;
+        self.0 = self.0 / 3 + carry as u64 * BASE_DIV_3;
+        rem as u8
     }
 
     #[inline]
@@ -1392,58 +1394,58 @@ mod tests
     fn test_div3_carry_assign_binary()
     {
         let mut d = BinaryDigit(0u8);
-        let carry = d.div3_carry_assign(BinaryDigit(0u8));
+        let carry = d.div3_carry_assign(0);
         assert_eq!(d, BinaryDigit(0));
-        assert_eq!(carry, BinaryDigit(0));
+        assert_eq!(carry, 0);
 
         let mut d = BinaryDigit(0x15u8);
-        let carry = d.div3_carry_assign(BinaryDigit(0u8));
+        let carry = d.div3_carry_assign(0);
         assert_eq!(d, BinaryDigit(0x07));
-        assert_eq!(carry, BinaryDigit(0));
+        assert_eq!(carry, 0);
 
         let mut d = BinaryDigit(0x15u8);
-        let carry = d.div3_carry_assign(BinaryDigit(1u8));
+        let carry = d.div3_carry_assign(1);
         assert_eq!(d, BinaryDigit(0x5c));
-        assert_eq!(carry, BinaryDigit(1));
+        assert_eq!(carry, 1);
 
         let mut d = BinaryDigit(0x15u32);
-        let carry = d.div3_carry_assign(BinaryDigit(1u32));
+        let carry = d.div3_carry_assign(1);
         assert_eq!(d, BinaryDigit(0x5555555c));
-        assert_eq!(carry, BinaryDigit(1));
+        assert_eq!(carry, 1);
 
         let mut d = BinaryDigit(0xf3abu16);
-        let carry = d.div3_carry_assign(BinaryDigit(2u16));
+        let carry = d.div3_carry_assign(2);
         assert_eq!(d, BinaryDigit(0xfbe3));
-        assert_eq!(carry, BinaryDigit(2));
+        assert_eq!(carry, 2);
     }
 
     #[test]
     fn test_div3_carry_assign_decimal()
     {
         let mut d = DecimalDigit(0u8);
-        let carry = d.div3_carry_assign(DecimalDigit(0u8));
+        let carry = d.div3_carry_assign(0);
         assert_eq!(d, DecimalDigit(0));
-        assert_eq!(carry, DecimalDigit(0));
+        assert_eq!(carry, 0);
 
         let mut d = DecimalDigit(15u8);
-        let carry = d.div3_carry_assign(DecimalDigit(0u8));
+        let carry = d.div3_carry_assign(0);
         assert_eq!(d, DecimalDigit(5));
-        assert_eq!(carry, DecimalDigit(0));
+        assert_eq!(carry, 0);
 
         let mut d = DecimalDigit(15u8);
-        let carry = d.div3_carry_assign(DecimalDigit(1u8));
+        let carry = d.div3_carry_assign(1);
         assert_eq!(d, DecimalDigit(38));
-        assert_eq!(carry, DecimalDigit(1));
+        assert_eq!(carry, 1);
 
         let mut d = DecimalDigit(15u32);
-        let carry = d.div3_carry_assign(DecimalDigit(1u32));
+        let carry = d.div3_carry_assign(1);
         assert_eq!(d, DecimalDigit(333_333_338));
-        assert_eq!(carry, DecimalDigit(1));
+        assert_eq!(carry, 1);
 
-        let mut d = DecimalDigit(6_536);
-        let carry = d.div3_carry_assign(DecimalDigit(2u16));
-        assert_eq!(d, DecimalDigit(8_845));
-        assert_eq!(carry, DecimalDigit(1));
+        let mut d = DecimalDigit(6_536u64);
+        let carry = d.div3_carry_assign(2);
+        assert_eq!(d, DecimalDigit(6_666_666_666_666_668_845));
+        assert_eq!(carry, 1);
     }
 
     #[test]

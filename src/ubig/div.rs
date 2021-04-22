@@ -3,7 +3,7 @@ use crate::digit::Digit;
 /// Divide the number or number part represented by the digits in `nr` by 3. The carry should
 /// be less than 3.
 #[inline]
-pub fn div3_carry_assign<T>(nr: &mut [T], carry: T)
+pub fn div3_carry_assign<T>(nr: &mut [T], carry: u8)
 where T: Digit
 {
     nr.iter_mut().rev().fold(carry, |carry, d| d.div3_carry_assign(carry));
@@ -98,19 +98,19 @@ mod tests
     fn test_div3_carry_assign_binary()
     {
         let mut n: [BinaryDigit<u8>; 0] = [];
-        div3_carry_assign(&mut n, BinaryDigit(0));
+        div3_carry_assign(&mut n, 0);
         assert_eq!(n, []);
 
         let mut n = [BinaryDigit(0u8), BinaryDigit(0xfa), BinaryDigit(0x13), BinaryDigit(0xf2)];
-        div3_carry_assign(&mut n, BinaryDigit(2));
+        div3_carry_assign(&mut n, 2);
         assert_eq!(n, [BinaryDigit(0), BinaryDigit(0xfe), BinaryDigit(0x5b), BinaryDigit(0xfb)]);
 
         let mut n = [BinaryDigit(0x761fu16), BinaryDigit(0xfa3d), BinaryDigit(0x1c3a)];
-        div3_carry_assign(&mut n, BinaryDigit(0));
+        div3_carry_assign(&mut n, 0);
         assert_eq!(n, [BinaryDigit(0x7cb5), BinaryDigit(0xfe14), BinaryDigit(0x0968)]);
 
         let mut n = [BinaryDigit(0x1761f876u32), BinaryDigit(0xfa3dffe3), BinaryDigit(0x1c3ab218)];
-        div3_carry_assign(&mut n, BinaryDigit(1));
+        div3_carry_assign(&mut n, 1);
         assert_eq!(n, [BinaryDigit(0xb275fd7c), BinaryDigit(0xa8bf554b), BinaryDigit(0x5ebe3b5d)]);
     }
 
@@ -118,19 +118,19 @@ mod tests
     fn test_div3_carry_assign_decimal()
     {
         let mut n: [DecimalDigit<u8>; 0] = [];
-        div3_carry_assign(&mut n, DecimalDigit(2));
+        div3_carry_assign(&mut n, 2);
         assert_eq!(n, []);
 
         let mut n = [DecimalDigit(0u8), DecimalDigit(35), DecimalDigit(98), DecimalDigit(22)];
-        div3_carry_assign(&mut n, DecimalDigit(2));
+        div3_carry_assign(&mut n, 2);
         assert_eq!(n, [DecimalDigit(33), DecimalDigit(78), DecimalDigit(32), DecimalDigit(74)]);
 
         let mut n = [DecimalDigit(0u16), DecimalDigit(0), DecimalDigit(1)];
-        div3_carry_assign(&mut n, DecimalDigit(1));
+        div3_carry_assign(&mut n, 1);
         assert_eq!(n, [DecimalDigit(6_666), DecimalDigit(6_666), DecimalDigit(3_333)]);
 
         let mut n = [DecimalDigit(891_563_891u32), DecimalDigit(821_976_524), DecimalDigit(321_098_000)];
-        div3_carry_assign(&mut n, DecimalDigit(0));
+        div3_carry_assign(&mut n, 0);
         assert_eq!(n, [DecimalDigit(630_521_297), DecimalDigit(940_658_841), DecimalDigit(107_032_666)]);
     }
 
