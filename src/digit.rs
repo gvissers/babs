@@ -322,19 +322,17 @@ impl DecimalDigit<u64>
     /// `x86_64` builtin `divq` instruction is slow, so we roll our own using only multiplications.
     fn div_rem_base(n: u128) -> (u64, u64)
     {
-        // Overview:
-        //   * Shift `n` right to divide by 2^18
-        //   * Then compute the upper bits of `n` * (2**154 / 5**18) discarding lower bits
-        //     to compute the quotient `q` = `n` / 10**18
-        //   * Compute the remainder as `n` - 10**18 * q
-        const SCALE_LOW: u128 = 13406782876194489480; // scale = (SCALE_HIGH, SCALE_LOW) = ceil(2**154 / 5**18)
-        const SCALE_HIGH: u128 = 324518553658426;     // FIXME? this should be calculated from DECIMAL_RADIX
+        /// This effectively computes n * 2**174 / 10**18, and the shifts the result 174 bits to
+        /// the right to compute the quotient q. The remainder is then calculated by subtracting
+        /// q*10**18 from n. The exponent 174 is high enough that this yields the correct result
+        /// for all possible n < 10**36.
+        const SCALE_LOW: u128 = 16733643357358854685; // scale = (SCALE_HIGH, SCALE_LOW) = ceil(2**174 / 10**18)
+        const SCALE_HIGH: u128 = 1298074214633706;    // FIXME? this should be calculated from DECIMAL_RADIX
 
-        let tmp = n >> Self::NR_DECIMAL_PLACES;
-        let (tmp_low, tmp_high) = (tmp & 0xffffffffffffffff, tmp >> 64);
-        let carry = (SCALE_LOW * tmp_low) >> 64;
-        let carry = (SCALE_LOW * tmp_high + SCALE_HIGH * tmp_low + carry) >> 64;
-        let quot = (SCALE_HIGH * tmp_high + carry) >> 26;
+        let (n_low, n_high) = (n & 0xffffffffffffffff, n >> 64);
+        let carry = (SCALE_LOW * n_low) >> 64;
+        let carry = (SCALE_LOW * n_high + SCALE_HIGH * n_low + carry) >> 64;
+        let quot = (SCALE_HIGH * n_high + carry) >> 46;
         let rem = n - quot * u64::DECIMAL_RADIX as u128;
         (quot as u64, rem as u64)
     }
