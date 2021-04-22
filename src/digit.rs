@@ -29,7 +29,7 @@ impl DigitStorage for u32
 }
 impl DigitStorage for u64
 {
-    const DECIMAL_RADIX: Self = 1_000_000_000_000_000_000;
+    const DECIMAL_RADIX: Self = 10_000_000_000_000_000_000;
 }
 
 /// Trait for a type that can be used as a digit in a big number
@@ -293,9 +293,8 @@ pub struct DecimalDigit<T>(pub T);
 impl<T> DecimalDigit<T>
 where T: DigitStorage
 {
-    /// The maximum number of decimal places used to denote a single digit. We keep a single bit
-    /// free so that addition of two digits will not overflow the underlying binary storage.
-    pub const NR_DECIMAL_PLACES: usize = (8 * std::mem::size_of::<T>() - 1) * 4004 / 13301;
+    /// The maximum number of decimal places used to denote a single digit.
+    pub const NR_DECIMAL_PLACES: usize = 8 * std::mem::size_of::<T>() * 4004 / 13301;
     /// The maximum length of a hexadecimal number that still fits in a single digit
     pub const MAX_HEX_PLACES: usize = 2 * std::mem::size_of::<T>() - 1;
 
@@ -326,13 +325,13 @@ impl DecimalDigit<u64>
         /// the right to compute the quotient q. The remainder is then calculated by subtracting
         /// q*10**18 from n. The exponent 174 is high enough that this yields the correct result
         /// for all possible n < 10**36.
-        const SCALE_LOW: u128 = 16733643357358854685; // scale = (SCALE_HIGH, SCALE_LOW) = ceil(2**174 / 10**18)
-        const SCALE_HIGH: u128 = 1298074214633706;    // FIXME? this should be calculated from DECIMAL_RADIX
+        const SCALE_LOW: u128 = 10779635027931437427; // scale = (SCALE_HIGH, SCALE_LOW) = ceil(2**190 / 10**19)
+        const SCALE_HIGH: u128 = 8507059173023461586; // FIXME? this should be calculated from DECIMAL_RADIX
 
         let (n_low, n_high) = (n & 0xffffffffffffffff, n >> 64);
         let carry = (SCALE_LOW * n_low) >> 64;
         let carry = (SCALE_LOW * n_high + SCALE_HIGH * n_low + carry) >> 64;
-        let quot = (SCALE_HIGH * n_high + carry) >> 46;
+        let quot = (SCALE_HIGH * n_high + carry) >> 62;
         let rem = n - quot * u64::DECIMAL_RADIX as u128;
         (quot as u64, rem as u64)
     }
@@ -549,14 +548,15 @@ impl Digit for DecimalDigit<u64>
     #[inline]
     fn add_carry_assign(&mut self, other: Self, carry: bool) -> bool
     {
-        self.0 += other.0 + carry as u64;
-        if self.0 >= u64::DECIMAL_RADIX
+        let (sum, overflow) = self.0.overflowing_add(other.0 + carry as u64);
+        if overflow || sum >= u64::DECIMAL_RADIX
         {
-            self.0 -= u64::DECIMAL_RADIX;
+            self.0 = sum.wrapping_sub(u64::DECIMAL_RADIX);
             true
         }
         else
         {
+            self.0 = sum;
             false
         }
     }
@@ -984,6 +984,21 @@ mod tests
         let overflow = d.add_carry_assign(DecimalDigit(999_781_234), true);
         assert!(overflow);
         assert_eq!(d, DecimalDigit(782_469));
+
+        let mut d = DecimalDigit(9_999_999_999_999_999_999u64);
+        let overflow = d.add_carry_assign(DecimalDigit(0), true);
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(0));
+
+        let mut d = DecimalDigit(9_999_999_999_999_999_999u64);
+        let overflow = d.add_carry_assign(DecimalDigit(46), false);
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(45));
+
+        let mut d = DecimalDigit(9_999_999_999_999_999_999u64);
+        let overflow = d.add_carry_assign(DecimalDigit(9_999_999_999_999_999_999), true);
+        assert!(overflow);
+        assert_eq!(d, DecimalDigit(9_999_999_999_999_999_999));
     }
 
     #[test]
@@ -1662,24 +1677,24 @@ mod tests
         assert_eq!(q, 0);
         assert_eq!(r, 0);
 
-        let (q, r) = DecimalDigit::<u64>::div_rem_base(986_132_876_982_192_889);
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(5_986_132_876_982_192_889);
         assert_eq!(q, 0);
-        assert_eq!(r, 986_132_876_982_192_889);
+        assert_eq!(r, 5_986_132_876_982_192_889);
 
-        let (q, r) = DecimalDigit::<u64>::div_rem_base(1_000_000_000_000_000_000);
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(10_000_000_000_000_000_000);
         assert_eq!(q, 1);
         assert_eq!(r, 0);
 
-        let (q, r) = DecimalDigit::<u64>::div_rem_base(2_000_000_000_000_000_001);
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(20_000_000_000_000_000_001);
         assert_eq!(q, 2);
         assert_eq!(r, 1);
 
-        let (q, r) = DecimalDigit::<u64>::div_rem_base(2_999_999_999_999_999_999);
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(29_999_999_999_999_999_999);
         assert_eq!(q, 2);
-        assert_eq!(r, 999_999_999_999_999_999);
+        assert_eq!(r, 9_999_999_999_999_999_999);
 
-        let (q, r) = DecimalDigit::<u64>::div_rem_base(999_999_999_999_999_999_999_999_999_999_999_999);
-        assert_eq!(q, 999_999_999_999_999_999);
-        assert_eq!(r, 999_999_999_999_999_999);
+        let (q, r) = DecimalDigit::<u64>::div_rem_base(99_999_999_999_999_999_999_999_999_999_999_999_999);
+        assert_eq!(q, 9_999_999_999_999_999_999);
+        assert_eq!(r, 9_999_999_999_999_999_999);
     }
 }

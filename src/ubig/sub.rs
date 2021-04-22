@@ -706,36 +706,36 @@ mod tests
         assert_eq!(nr0, [DecimalDigit(1), DecimalDigit(0)]);
 
         let mut nr0 = [
-            DecimalDigit(748_918_999_164_244_199u64),
-            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(5_748_918_999_164_244_199u64),
+            DecimalDigit(9_332_982_876_466_454_782),
             DecimalDigit(123)
         ];
-        let nr1 = [DecimalDigit(983_299_918_982_872_456u64), DecimalDigit(564_555_736_893_987_342)];
+        let nr1 = [DecimalDigit(5_983_299_918_982_872_456u64), DecimalDigit(9_564_555_736_893_987_342)];
         let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 3, &nr1);
         assert_eq!(sign, false);
         assert_eq!(len, 3);
         assert_eq!(nr0, [
-            DecimalDigit(765_619_080_181_371_743),
-            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(9_765_619_080_181_371_743),
+            DecimalDigit(9_768_427_139_572_467_439),
             DecimalDigit(122)
         ]);
 
         let mut nr0 = [
-            DecimalDigit(983_299_918_982_872_456u64),
-            DecimalDigit(564_555_736_893_987_342),
+            DecimalDigit(5_983_299_918_982_872_456u64),
+            DecimalDigit(9_564_555_736_893_987_342),
             DecimalDigit(0)
         ];
         let nr1 = [
-            DecimalDigit(748_918_999_164_244_199u64),
-            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(5_748_918_999_164_244_199u64),
+            DecimalDigit(9_332_982_876_466_454_782),
             DecimalDigit(123)
         ];
         let (sign, len) = sub_assign_big_abs_sign(&mut nr0, 3, &nr1);
         assert_eq!(sign, true);
         assert_eq!(len, 3);
         assert_eq!(nr0, [
-            DecimalDigit(765_619_080_181_371_743),
-            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(9_765_619_080_181_371_743),
+            DecimalDigit(9_768_427_139_572_467_439),
             DecimalDigit(122)
         ]);
     }
@@ -828,25 +828,25 @@ mod tests
         assert_eq!(abs_diff, [DecimalDigit(1), DecimalDigit(0)]);
 
         let nr0 = [
-            DecimalDigit(748_918_999_164_244_199u64),
-            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(5_748_918_999_164_244_199u64),
+            DecimalDigit(9_332_982_876_466_454_782),
             DecimalDigit(123)
         ];
-        let nr1 = [DecimalDigit(983_299_918_982_872_456u64), DecimalDigit(564_555_736_893_987_342)];
+        let nr1 = [DecimalDigit(5_983_299_918_982_872_456u64), DecimalDigit(9_564_555_736_893_987_342)];
         let mut abs_diff = [DecimalDigit(0); 3];
         let (sign, len) = sub_big_into_abs_sign(&nr0, &nr1, &mut abs_diff);
         assert_eq!(sign, false);
         assert_eq!(len, 3);
         assert_eq!(abs_diff, [
-            DecimalDigit(765_619_080_181_371_743),
-            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(9_765_619_080_181_371_743),
+            DecimalDigit(9_768_427_139_572_467_439),
             DecimalDigit(122)
         ]);
 
-        let nr0 = [DecimalDigit(983_299_918_982_872_456u64), DecimalDigit(564_555_736_893_987_342)];
+        let nr0 = [DecimalDigit(5_983_299_918_982_872_456u64), DecimalDigit(9_564_555_736_893_987_342)];
         let nr1 = [
-            DecimalDigit(748_918_999_164_244_199u64),
-            DecimalDigit(332_982_876_466_454_782),
+            DecimalDigit(5_748_918_999_164_244_199u64),
+            DecimalDigit(9_332_982_876_466_454_782),
             DecimalDigit(123)
         ];
         let mut abs_diff = [DecimalDigit(0); 3];
@@ -854,8 +854,8 @@ mod tests
         assert_eq!(sign, true);
         assert_eq!(len, 3);
         assert_eq!(abs_diff, [
-            DecimalDigit(765_619_080_181_371_743),
-            DecimalDigit(768_427_139_572_467_439),
+            DecimalDigit(9_765_619_080_181_371_743),
+            DecimalDigit(9_768_427_139_572_467_439),
             DecimalDigit(122)
         ]);
     }

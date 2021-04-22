@@ -1644,9 +1644,9 @@ mod test
         let n = UBig::new(vec![BinaryDigit(0x01u64), BinaryDigit(0x02), BinaryDigit(0x03)]);
         let m = n.to_decimal();
         assert_eq!(m.digits(), &[
-            DecimalDigit(17_310_442_723_737_601),
-            DecimalDigit(847_100_762_815_390_427),
-            DecimalDigit(1_020)
+            DecimalDigit(7_017_310_442_723_737_601),
+            DecimalDigit(2_084_710_076_281_539_042),
+            DecimalDigit(10)
         ]);
 
         let n = UBig::new(vec![
@@ -1656,10 +1656,10 @@ mod test
         ]);
         let m = n.to_decimal();
         assert_eq!(m.digits(), &[
-            DecimalDigit(816_494_390_609_385_901),
-            DecimalDigit(66_315_393_028_716_848),
-            DecimalDigit(311_443_965_039_676_465),
-            DecimalDigit(5_466)
+            DecimalDigit(8_816_494_390_609_385_901),
+            DecimalDigit(6_506_631_539_302_871_684),
+            DecimalDigit(4_663_114_439_650_396_764),
+            DecimalDigit(5)
         ]);
     }
 }
