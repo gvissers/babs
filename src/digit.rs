@@ -239,7 +239,118 @@ macro_rules! impl_digit_binary
 impl_digit_binary!(u8, u16);
 impl_digit_binary!(u16, u32);
 impl_digit_binary!(u32, u64);
-impl_digit_binary!(u64, u128);
+
+impl Digit for BinaryDigit<u64>
+{
+    const MAX: Self = BinaryDigit(u64::max_value());
+
+    #[inline]
+    fn from_base_str(s: &str, base: u32) -> Result<Self>
+    {
+        let d = u64::from_str_radix(s, base).map_err(|_| Error::InvalidNumber)?;
+        Ok(BinaryDigit(d))
+    }
+
+    #[inline]
+    fn max_shift(&self) -> u32
+    {
+        self.0.leading_zeros()
+    }
+
+    #[inline]
+    fn inc(&mut self) -> bool
+    {
+        let (n, overflow) = self.0.overflowing_add(1);
+        self.0 = n;
+        overflow
+    }
+
+    #[inline]
+    fn dec(&mut self) -> bool
+    {
+        let (n, underflow) = self.0.overflowing_sub(1);
+        self.0 = n;
+        underflow
+    }
+
+    #[inline]
+    fn add_carry_assign(&mut self, other: Self, carry: bool) -> bool
+    {
+        let (n, overflow0) = self.0.overflowing_add(other.0);
+        let (n, overflow1) = n.overflowing_add(carry as u64);
+        self.0 = n;
+        overflow0 || overflow1
+    }
+
+    #[inline]
+    fn sub_carry_assign(&mut self, other: Self, carry: bool) -> bool
+    {
+        let (n, underflow0) = self.0.overflowing_sub(other.0);
+        let (n, underflow1) = n.overflowing_sub(carry as u64);
+        self.0 = n;
+        underflow0 || underflow1
+    }
+
+    #[inline]
+    fn shl_carry_assign(&mut self, shift: usize, carry: Self) -> Self
+    {
+        let new_carry = self.0 >> (Self::NR_BITS - shift);
+        self.0 = (self.0 << shift) | carry.0;
+        BinaryDigit(new_carry)
+    }
+
+    #[inline]
+    fn shr_carry_assign(&mut self, shift: usize, carry: Self) -> Self
+    {
+        let mask = (1 << (shift - 1)) | ((1 << (shift - 1)) - 1);
+        let new_carry = self.0 & mask;
+        self.0 = (carry.0 << Self::NR_BITS - shift) | (self.0 >> shift);
+        BinaryDigit(new_carry)
+    }
+
+    #[inline]
+    fn mul_carry_assign(&mut self, fac: Self, carry: Self) -> Self
+    {
+        let tmp = self.0 as u128 * fac.0 as u128 + carry.0 as u128;
+        self.0 = (tmp & Self::MAX.0 as u128) as u64;
+        BinaryDigit((tmp >> Self::NR_BITS) as u64)
+    }
+
+    #[inline]
+    fn div_carry_assign(&mut self, fac: Self, carry: Self) -> Self
+    {
+        let tmp = ((carry.0 as u128) << Self::NR_BITS) | self.0 as u128;
+        self.0 = (tmp / fac.0 as u128) as u64;
+        BinaryDigit((tmp % fac.0 as u128) as u64)
+    }
+
+    #[inline]
+    fn div3_carry_assign(&mut self, carry: u8) -> u8
+    {
+        const BASE_DIV_3: u64 = BinaryDigit::<u64>::MAX.0 / 3;
+        self.0 += carry as u64;
+        let rem = self.0 % 3;
+        self.0 = self.0 / 3 + carry as u64 * BASE_DIV_3;
+        rem as u8
+    }
+
+    #[inline]
+    fn add_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self
+    {
+        let tmp = self.0 as u128 + fac0.0 as u128 * fac1.0 as u128 + carry.0 as u128;
+        self.0 = (tmp & Self::MAX.0 as u128) as u64;
+        BinaryDigit((tmp >> Self::NR_BITS) as u64)
+    }
+
+    #[inline]
+    fn sub_prod_carry_assign(&mut self, fac0: Self, fac1: Self, carry: Self) -> Self
+    {
+        let tmp = fac0.0 as u128 * fac1.0 as u128 + carry.0 as u128;
+        let (n, underflow) = self.0.overflowing_sub((tmp & Self::MAX.0 as u128) as u64);
+        self.0 = n;
+        BinaryDigit((tmp >> Self::NR_BITS) as u64 + underflow as u64)
+    }
+}
 
 impl<T> num_traits::Zero for BinaryDigit<T>
 where T: num_traits::Zero
@@ -1393,29 +1504,39 @@ mod tests
     #[test]
     fn test_div3_carry_assign_binary()
     {
-        let mut d = BinaryDigit(0u8);
+        let mut d = BinaryDigit(0_u8);
         let carry = d.div3_carry_assign(0);
         assert_eq!(d, BinaryDigit(0));
         assert_eq!(carry, 0);
 
-        let mut d = BinaryDigit(0x15u8);
+        let mut d = BinaryDigit(0x15_u8);
         let carry = d.div3_carry_assign(0);
         assert_eq!(d, BinaryDigit(0x07));
         assert_eq!(carry, 0);
 
-        let mut d = BinaryDigit(0x15u8);
+        let mut d = BinaryDigit(0x15_u8);
         let carry = d.div3_carry_assign(1);
         assert_eq!(d, BinaryDigit(0x5c));
         assert_eq!(carry, 1);
 
-        let mut d = BinaryDigit(0x15u32);
+        let mut d = BinaryDigit(0x15_u32);
         let carry = d.div3_carry_assign(1);
         assert_eq!(d, BinaryDigit(0x5555555c));
         assert_eq!(carry, 1);
 
-        let mut d = BinaryDigit(0xf3abu16);
+        let mut d = BinaryDigit(0xf3ab_u16);
         let carry = d.div3_carry_assign(2);
         assert_eq!(d, BinaryDigit(0xfbe3));
+        assert_eq!(carry, 2);
+
+        let mut d = BinaryDigit(0x12af3a76fde54f22_u64);
+        let carry = d.div3_carry_assign(2);
+        assert_eq!(d, BinaryDigit(0xb0e5137cff4c6fb6));
+        assert_eq!(carry, 0);
+
+        let mut d = BinaryDigit(0x12af3a76fde54f22_u64);
+        let carry = d.div3_carry_assign(1);
+        assert_eq!(d, BinaryDigit(0x5b8fbe27a9f71a60));
         assert_eq!(carry, 2);
     }
 
