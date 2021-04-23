@@ -328,10 +328,9 @@ impl Digit for BinaryDigit<u64>
     fn div3_carry_assign(&mut self, carry: u8) -> u8
     {
         const BASE_DIV_3: u64 = BinaryDigit::<u64>::MAX.0 / 3;
-        self.0 += carry as u64;
         let rem = self.0 % 3;
-        self.0 = self.0 / 3 + carry as u64 * BASE_DIV_3;
-        rem as u8
+        self.0 = self.0 / 3 + carry as u64 * BASE_DIV_3 + (carry as u64 + rem) / 3;
+        (carry as u8 + rem as u8) % 3
     }
 
     #[inline]
@@ -1537,6 +1536,11 @@ mod tests
         let mut d = BinaryDigit(0x12af3a76fde54f22_u64);
         let carry = d.div3_carry_assign(1);
         assert_eq!(d, BinaryDigit(0x5b8fbe27a9f71a60));
+        assert_eq!(carry, 2);
+
+        let mut d = BinaryDigit(0xffffffffffffffff_u64);
+        let carry = d.div3_carry_assign(2);
+        assert_eq!(d, BinaryDigit(0xffffffffffffffff));
         assert_eq!(carry, 2);
     }
 
