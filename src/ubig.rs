@@ -155,6 +155,24 @@ impl<T> UBig<T>
         }
     }
 
+    /// Return the square of this number
+    pub fn square(&self) -> Self
+    where T: Digit
+    {
+        if self.is_zero()
+        {
+            Self::zero()
+        }
+        else
+        {
+            let n0 = self.nr_digits();
+            let mut digits = vec![T::zero(); 2*n0];
+            let n = mul::square_into(&self.digits, &mut digits);
+            digits.truncate(n);
+            UBig { digits }
+        }
+    }
+
     /// Divide this number by single digit `fac`, and return the remainder. If `fac` is zero,
     /// a `DivisionByZero` error is returned.
     fn div_assign_digit(&mut self, fac: T) -> Result<T>
@@ -207,7 +225,7 @@ impl<T> UBig<BinaryDigit<T>>
                 let mut scales = vec![scale.clone()];
                 for _ in 1..pow_max
                 {
-                    scale = &scale * &scale;
+                    scale = scale.square();
                     scales.push(scale.clone());
                 }
                 Self::build_decimal(&self.digits, &scales)
@@ -1221,15 +1239,14 @@ where T: Digit
         {
             0 => UBig::one(),
             1 => self.clone(),
-//             2 => self.square(),
+            2 => self.square(),
             _ => {
                 let mut result = if exp % 2 == 0 { UBig::one() } else { self.clone() };
                 let mut power = self.clone();
                 let mut n = exp / 2;
                 while n > 0
                 {
-//                     power = power.square();
-                    power = &power * &power;
+                    power = power.square();
                     if n % 2 != 0
                     {
                         result *= &power;

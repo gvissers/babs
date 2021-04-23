@@ -132,6 +132,71 @@ where T: Digit
     }
 }
 
+/// Calculate the square of the number represented by `nr0`, and store the result in `square`. The
+/// result array must have space for at least `2*n0` digits,  where `n0` denotes the number of
+/// digits in `nr0`. Returns the number of digits in the square.
+pub fn square_into<T>(nr0: &[T], square: &mut [T]) -> usize
+where T: Digit
+{
+    if nr0.is_empty()
+    {
+        0
+    }
+    else
+    {
+        let n0 = nr0.len();
+        assert!(square.len() >= 2*n0, "Not enough space to store the result");
+
+        if n0 >= TOOM3_CUTOFF
+        {
+            let work_size = toom3::calc_toom3_work_size(n0);
+            let mut work = vec![T::zero(); work_size];
+            toom3::square_toom3_into(nr0, square, &mut work)
+        }
+        else if n0 >= KARATSUBA_CUTOFF
+        {
+            let work_size = karatsuba::calc_karatsuba_work_size(n0);
+            let mut work = vec![T::zero(); work_size];
+            karatsuba::square_karatsuba_into(nr0, square, &mut work)
+        }
+        else
+        {
+            long::square_long_into(nr0, square)
+        }
+    }
+}
+
+/// Square the number represented by `nr0`, possibly uing scratch array `work` in the
+/// process, and store the result in `square`. The result array must have space for at least
+/// `2*n0` digits,  where `n0` denotes the number of digits in `nr0`. Returns the number of
+/// digits in the square.
+fn square_into_with_work<T>(nr0: &[T], square: &mut [T], work: &mut [T]) -> usize
+where T: Digit
+{
+    if nr0.is_empty()
+    {
+        0
+    }
+    else
+    {
+        let n0 = nr0.len();
+        assert!(square.len() >= 2*n0, "Not enough space to store the result");
+
+        if n0 >= TOOM3_CUTOFF
+        {
+            toom3::square_toom3_into(nr0, square, work)
+        }
+        else if n0 >= KARATSUBA_CUTOFF
+        {
+            karatsuba::square_karatsuba_into(nr0, square, work)
+        }
+        else
+        {
+            long::square_long_into(nr0, square)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests
 {
