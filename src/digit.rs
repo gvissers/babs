@@ -428,20 +428,25 @@ impl DecimalDigit<u64>
     /// i.e. compute `(n / DECIMAL_RADIX, n % DECIMAL_RADIX)`. Normally one would use a builtin
     /// division for this, but this is very slow since the compiler is not able to replace the
     /// division by a constant with a multiplication by its inverse for `u128`. Even using the
-    /// `x86_64` builtin `divq` instruction is slow, so we roll our own using only multiplications.
+    /// `x86_64` builtin `divq` instruction is slow, so we roll our own using only multiplications
+    /// and shifts.
     fn div_rem_base(n: u128) -> (u64, u64)
     {
-        /// This effectively computes n * ceil(2**190 / 10**19), and the shifts the result 190 bits to
+        /// This effectively computes n * ceil(2**192 / 10**19), and the shifts the result 192 bits to
         /// the right to compute the quotient q. The remainder is then calculated by subtracting
-        /// q*10**19 from n. The exponent 190 is high enough that this yields the correct result
-        /// for all possible n < 10**38. (in fact 188 would suffice).
-        const SCALE_LOW: u128 = 10779635027931437427; // scale = (SCALE_HIGH, SCALE_LOW) = ceil(2**190 / 10**19)
-        const SCALE_HIGH: u128 = 8507059173023461586; // FIXME? this should be calculated from DECIMAL_RADIX
+        /// q*10**19 from n. The exponent 192 is high enough that this yields the correct result
+        /// for all possible n < 10**38. (in fact 188 would suffice). We use an exponent of 192,
+        /// though, so that the final shift in the calculation of the quotient works out to be 64,
+        /// which at least on x86_64 removes the need for a shift altogether.
+        const SCALE_LOW: u128 = 6225051964306646475;   // scale = (1, SCALE_HIGH, SCALE_LOW) = ceil(2**192 / 10**19)
+        const SCALE_HIGH: u128 = 15581492618384294730; // FIXME? this should be calculated from DECIMAL_RADIX
+        // The high bit of the scale (1*2**128) is accounted for below in the calculation of
+        // quot by the additions of n_low and n_high.
 
         let (n_low, n_high) = (n & 0xffffffffffffffff, n >> 64);
         let carry = (SCALE_LOW * n_low) >> 64;
         let carry = (SCALE_LOW * n_high + SCALE_HIGH * n_low + carry) >> 64;
-        let quot = (SCALE_HIGH * n_high + carry) >> 62;
+        let quot = ((SCALE_HIGH * n_high + carry + n_low) >> 64) + n_high;
         let rem = n - quot * u64::DECIMAL_RADIX as u128;
         (quot as u64, rem as u64)
     }
