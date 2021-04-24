@@ -59,6 +59,8 @@ where T: Digit
 
     let (pm2, qm2) = result.split_at_mut(b+2);
     let (work, new_work) = work.split_at_mut(6*b+10);
+    // TODO(?): find out where work isreuired to be zero
+    work.fill(T::zero());
     let (r1, work) = work.split_at_mut(2*b+3);
     let (rm1, rm2) = work.split_at_mut(2*b+3);
     let (p1, q1) = rm1.split_at_mut(b+1);
@@ -247,7 +249,7 @@ rm2[len_rm2..].fill(T::zero());
     {
         len_r3 = len_r4;
         crate::ubig::rsub::rsub_assign_big(&mut r3[..len_r4], r4);
-        if crate::ubig::add::add_assign_big(&mut r3[..len_r3], r4)
+        if crate::ubig::add::add_assign_big(&mut r3[..len_r4], r4)
         {
             r3[len_r3] = T::one();
             len_r3 += 1;
