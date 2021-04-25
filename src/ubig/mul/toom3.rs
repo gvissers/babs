@@ -57,6 +57,7 @@ where T: Digit
 
     let n = nd0 + nd1;
 
+    result.fill(T::zero());
     let (pm2, qm2) = result.split_at_mut(b+2);
     let (work, new_work) = work.split_at_mut(6*b+10);
     // TODO(?): find out where work isreuired to be zero
@@ -91,7 +92,7 @@ where T: Digit
             // 0 ≤ pm2 ≤ 3(r-1)
             (false, crate::ubig::add::add_big_into(&pm1[..len_pm1], pinf, pm2).unwrap())
         };
-    if !crate::ubig::shl::shl_carry_assign_within_digit(&mut pm2[..len_pm2], 1, T::zero()).is_zero()
+    if super::double_carry_assign(&mut pm2[..len_pm2], false)
     {
         // -2(r-1) ≤ pm2 < 0      if sign_pm2
         //       0 ≤ pm2 ≤ 6(r-1) if !sign_pm2
@@ -131,7 +132,7 @@ where T: Digit
         {
             (false, crate::ubig::add::add_big_into(&qm1[..len_qm1], qinf, qm2).unwrap())
         };
-    if !crate::ubig::shl::shl_carry_assign_within_digit(&mut qm2[..len_qm2], 1, T::zero()).is_zero()
+    if super::double_carry_assign(&mut qm2[..len_qm2], false)
     {
         qm2[len_qm2] = T::one();
         len_qm2 += 1;
@@ -322,7 +323,7 @@ where T: Digit
         {
             (false, crate::ubig::add::add_big_into(&pm1[..len_pm1], pinf, pm2).unwrap())
         };
-    if !crate::ubig::shl::shl_carry_assign_within_digit(&mut pm2[..len_pm2], 1, T::zero()).is_zero()
+    if super::double_carry_assign(&mut pm2[..len_pm2], false)
     {
         pm2[len_pm2] = T::one();
         len_pm2 += 1;

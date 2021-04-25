@@ -9,6 +9,13 @@ const KARATSUBA_CUTOFF: usize = 20;
 /// The minimum size of a number (in digits) for Toom-Cook multiplication.
 const TOOM3_CUTOFF: usize = 128;
 
+/// Double the number or number part in `nr`, and add carry to the result. Returns `true` if the
+/// result overflows, `flase` otherwise.
+pub fn double_carry_assign<T>(nr: &mut [T], carry: bool) -> bool
+where T: Digit
+{
+    nr.iter_mut().fold(carry, |carry, d| d.double_carry_assign(carry))
+}
 
 /// Multiply the number or number part represented by the digits in `nr` by the single digit `fac`,
 /// and add the single digit `off` to the result. Return the carry on overflow, or `None` if the
@@ -202,6 +209,109 @@ mod tests
 {
     use crate::digit::{BinaryDigit, DecimalDigit};
     use super::*;
+
+    #[test]
+    fn test_double_carry_assign_binary()
+    {
+        let mut nr: [BinaryDigit<u8>; 0] = [];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, []);
+        assert!(carry);
+
+        let mut nr = [BinaryDigit(0x78_u8), BinaryDigit(0xf2), BinaryDigit(0x76)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [BinaryDigit(0xf1), BinaryDigit(0xe4), BinaryDigit(0xed)]);
+        assert!(!carry);
+
+        let mut nr = [BinaryDigit(0x78_u8), BinaryDigit(0xf2), BinaryDigit(0x86)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [BinaryDigit(0xf1), BinaryDigit(0xe4), BinaryDigit(0x0d)]);
+        assert!(carry);
+
+        let mut nr = [BinaryDigit(0x78_u16), BinaryDigit(0xf2), BinaryDigit(0x86)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [BinaryDigit(0xf1), BinaryDigit(0x01e4), BinaryDigit(0x010c)]);
+        assert!(!carry);
+
+        let mut nr = [BinaryDigit(0x1278_u16), BinaryDigit(0x80f2), BinaryDigit(0xc386)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [BinaryDigit(0x24f0), BinaryDigit(0x01e4), BinaryDigit(0x870d)]);
+        assert!(carry);
+
+        let mut nr = [BinaryDigit(0x1278_u32), BinaryDigit(0x80f2), BinaryDigit(0xc386)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [BinaryDigit(0x24f0), BinaryDigit(0x0101e4), BinaryDigit(0x01870c)]);
+        assert!(!carry);
+
+        let mut nr = [BinaryDigit(0xffff1278_u32), BinaryDigit(0xc38580f2), BinaryDigit(0x764dc386)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [BinaryDigit(0xfffe24f1), BinaryDigit(0x870b01e5), BinaryDigit(0xec9b870d)]);
+        assert!(!carry);
+
+        let mut nr = [BinaryDigit(0xffff1278_u64), BinaryDigit(0xc38580f2), BinaryDigit(0x764dc386)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [BinaryDigit(0x01fffe24f1), BinaryDigit(0x01870b01e4), BinaryDigit(0xec9b870c)]);
+        assert!(!carry);
+
+        let mut nr = [BinaryDigit(0x73f5d78affff1278_u64), BinaryDigit(0x809267f4c38580f2), BinaryDigit(0x818df45d764dc386)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [BinaryDigit(0xe7ebaf15fffe24f0), BinaryDigit(0x0124cfe9870b01e4), BinaryDigit(0x031be8baec9b870d)]);
+        assert!(carry);
+    }
+
+    #[test]
+    fn test_double_carry_assign_decimal()
+    {
+        let mut nr: [DecimalDigit<u8>; 0] = [];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, []);
+        assert!(carry);
+
+        let mut nr = [DecimalDigit(78_u8), DecimalDigit(92), DecimalDigit(36)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [DecimalDigit(57), DecimalDigit(85), DecimalDigit(73)]);
+        assert!(!carry);
+
+        let mut nr = [DecimalDigit(78_u8), DecimalDigit(92), DecimalDigit(76)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [DecimalDigit(57), DecimalDigit(85), DecimalDigit(53)]);
+        assert!(carry);
+
+        let mut nr = [DecimalDigit(78_u16), DecimalDigit(92), DecimalDigit(76)];
+        let carry = double_carry_assign(&mut nr, true);
+        assert_eq!(nr, [DecimalDigit(157), DecimalDigit(184), DecimalDigit(152)]);
+        assert!(!carry);
+
+        let mut nr = [DecimalDigit(8_765_u16), DecimalDigit(4_321), DecimalDigit(5_000)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [DecimalDigit(7_530), DecimalDigit(8_643), DecimalDigit(0)]);
+        assert!(carry);
+
+        let mut nr = [DecimalDigit(8_765_u32), DecimalDigit(4_321), DecimalDigit(5_000)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [DecimalDigit(17_530), DecimalDigit(8_642), DecimalDigit(10_000)]);
+        assert!(!carry);
+
+        let mut nr = [DecimalDigit(999_999_999_u32), DecimalDigit(999_999_999), DecimalDigit(999_999_999)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [DecimalDigit(999_999_998), DecimalDigit(999_999_999), DecimalDigit(999_999_999)]);
+        assert!(carry);
+
+        let mut nr = [DecimalDigit(999_999_999_u64), DecimalDigit(999_999_999), DecimalDigit(999_999_999)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [DecimalDigit(1_999_999_998), DecimalDigit(1_999_999_998), DecimalDigit(1_999_999_998)]);
+        assert!(!carry);
+
+        let mut nr = [DecimalDigit(5_789_987_625_187_287_987_u64), DecimalDigit(3_981_928_988_564_766_999)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [DecimalDigit(1_579_975_250_374_575_974), DecimalDigit(7_963_857_977_129_533_999)]);
+        assert!(!carry);
+
+        let mut nr = [DecimalDigit(3_981_928_988_564_766_999_u64), DecimalDigit(5_789_987_625_187_287_987)];
+        let carry = double_carry_assign(&mut nr, false);
+        assert_eq!(nr, [DecimalDigit(7_963_857_977_129_533_998), DecimalDigit(1_579_975_250_374_575_974)]);
+        assert!(carry);
+    }
 
     #[test]
     fn test_mul_add_assign_digit_binary()

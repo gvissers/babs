@@ -40,7 +40,7 @@ where T: Digit
             .fold(T::zero(), |carry, (&d0, rd)| rd.add_prod_carry_assign(d0, d1, carry));
         square[2*n1] = carry;
     }
-    crate::ubig::shl::shl_carry_assign_within_digit(&mut square[..nd], 1, T::zero());
+    super::double_carry_assign(&mut square[..nd], false);
     let mut carry = false;
     for (&d, rds) in nr0.iter().zip(square[..nd].chunks_exact_mut(2))
     {
