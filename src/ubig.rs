@@ -220,14 +220,17 @@ impl<T> UBig<BinaryDigit<T>>
             0 => UBig::zero(),
             1 => UBig::<DecimalDigit<T>>::from(self.digits[0].0),
             n => {
+                let half_nr_bits = BinaryDigit::<T>::NR_BITS / 2;
                 let pow_max = 8 * std::mem::size_of::<usize>() as u32 - n.leading_zeros() - 1;
-                let mut scale = (UBig::one() << (BinaryDigit::<T>::NR_BITS/2)) << (BinaryDigit::<T>::NR_BITS/2);
-                let mut scales = vec![scale.clone()];
-                for _ in 1..pow_max
+                let mut scale = (UBig::one() << half_nr_bits) << half_nr_bits;
+                let mut scales = vec![];
+                for _ in 0..pow_max-1
                 {
-                    scale = scale.square();
-                    scales.push(scale.clone());
+                    let scale_sq = scale.square();
+                    scales.push(scale);
+                    scale = scale_sq;
                 }
+                scales.push(scale);
                 Self::build_decimal(&self.digits, &scales)
             }
         }
