@@ -247,8 +247,13 @@ impl<T> UBig<BinaryDigit<T>>
             0 => UBig::zero(),
             1 => UBig::<DecimalDigit<T>>::from(digits[0].0),
             n => {
-                let pow_idx = 8 * std::mem::size_of::<usize>() - n.leading_zeros() as usize - 2;
-                let split = 1 << pow_idx;
+                let mut pow_idx = 8 * std::mem::size_of::<usize>() - n.leading_zeros() as usize - 2;
+                let mut split = 1 << pow_idx;
+                if 3*split > 2*n
+                {
+                    pow_idx -= 1;
+                    split >>= 1;
+                }
                 let nlow = support::drop_leading_zeros(digits, split);
                 let low = Self::build_decimal(&digits[..nlow], scales);
                 let high = Self::build_decimal(&digits[split..], scales);
@@ -553,9 +558,10 @@ impl<T> std::ops::Add<T> for UBig<T>
 where T: Digit
 {
     type Output = Self;
-    fn add(self, digit: T) -> Self::Output
+    fn add(mut self, digit: T) -> Self::Output
     {
-        &self + digit
+        self += digit;
+        self
     }
 }
 
@@ -565,9 +571,7 @@ where T: Digit
     type Output = UBig<T>;
     fn add(self, digit: T) -> Self::Output
     {
-        let mut sum = self.clone();
-        sum += digit;
-        sum
+        self.clone() + digit
     }
 }
 
@@ -575,9 +579,10 @@ impl<T> std::ops::Add<T> for UBig<BinaryDigit<T>>
 where T: DigitStorage, BinaryDigit<T>: Digit
 {
     type Output = Self;
-    fn add(self, digit: T) -> Self::Output
+    fn add(mut self, digit: T) -> Self::Output
     {
-        &self + digit
+        self += digit;
+        self
     }
 }
 
@@ -587,9 +592,7 @@ where T: DigitStorage, BinaryDigit<T>: Digit
     type Output = UBig<BinaryDigit<T>>;
     fn add(self, digit: T) -> Self::Output
     {
-        let mut sum = self.clone();
-        sum += digit;
-        sum
+        self.clone() + digit
     }
 }
 
@@ -597,9 +600,10 @@ impl<T> std::ops::Add<T> for UBig<DecimalDigit<T>>
 where T: DigitStorage, DecimalDigit<T>: Digit
 {
     type Output = Self;
-    fn add(self, digit: T) -> Self::Output
+    fn add(mut self, digit: T) -> Self::Output
     {
-        &self + digit
+        self += digit;
+        self
     }
 }
 
@@ -609,9 +613,7 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     type Output = UBig<DecimalDigit<T>>;
     fn add(self, digit: T) -> Self::Output
     {
-        let mut sum = self.clone();
-        sum += digit;
-        sum
+        self.clone() + digit
     }
 }
 
@@ -621,7 +623,7 @@ where T: Digit
     type Output = Self;
     fn add(self, other: UBig<T>) -> Self::Output
     {
-        &self + &other
+        self + &other
     }
 }
 
@@ -629,9 +631,10 @@ impl<T> std::ops::Add<&UBig<T>> for UBig<T>
 where T: Digit
 {
     type Output = Self;
-    fn add(self, other: &UBig<T>) -> Self::Output
+    fn add(mut self, other: &UBig<T>) -> Self::Output
     {
-        &self + other
+        self += other;
+        self
     }
 }
 
@@ -641,7 +644,7 @@ where T: Digit
     type Output = UBig<T>;
     fn add(self, other: UBig<T>) -> Self::Output
     {
-        self + &other
+        self.clone() + &other
     }
 }
 
@@ -651,9 +654,7 @@ where T: Digit
     type Output = UBig<T>;
     fn add(self, other: &UBig<T>) -> Self::Output
     {
-        let mut n = self.clone();
-        n += other;
-        n
+        self.clone() + other
     }
 }
 
@@ -703,9 +704,10 @@ impl<T> std::ops::Div<T> for UBig<T>
 where T: Digit
 {
     type Output = Self;
-    fn div(self, digit: T) -> Self::Output
+    fn div(mut self, digit: T) -> Self::Output
     {
-        &self / digit
+        self /= digit;
+        self
     }
 }
 
@@ -715,9 +717,7 @@ where T: Digit
     type Output = UBig<T>;
     fn div(self, digit: T) -> Self::Output
     {
-        let mut quotient = self.clone();
-        quotient /= digit;
-        quotient
+        self.clone() / digit
     }
 }
 
@@ -725,9 +725,10 @@ impl<T> std::ops::Div<T> for UBig<BinaryDigit<T>>
 where BinaryDigit<T>: Digit
 {
     type Output = Self;
-    fn div(self, digit: T) -> Self::Output
+    fn div(mut self, digit: T) -> Self::Output
     {
-        &self / digit
+        self /= digit;
+        self
     }
 }
 
@@ -737,7 +738,7 @@ where BinaryDigit<T>: Digit
     type Output = UBig<BinaryDigit<T>>;
     fn div(self, digit: T) -> Self::Output
     {
-        self / BinaryDigit(digit)
+        self.clone() / digit
     }
 }
 
@@ -745,9 +746,10 @@ impl<T> std::ops::Div<T> for UBig<DecimalDigit<T>>
 where T: DigitStorage, DecimalDigit<T>: Digit
 {
     type Output = Self;
-    fn div(self, digit: T) -> Self::Output
+    fn div(mut self, digit: T) -> Self::Output
     {
-        &self / digit
+        self /= digit;
+        self
     }
 }
 
@@ -757,9 +759,7 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     type Output = UBig<DecimalDigit<T>>;
     fn div(self, n: T) -> Self::Output
     {
-        let mut quotient = self.clone();
-        quotient /= n;
-        quotient
+        self.clone() / n
     }
 }
 
@@ -821,9 +821,10 @@ impl<T> std::ops::Mul<T> for UBig<T>
 where T: Digit
 {
     type Output = Self;
-    fn mul(self, digit: T) -> Self::Output
+    fn mul(mut self, digit: T) -> Self::Output
     {
-        &self * digit
+        self *= digit;
+        self
     }
 }
 
@@ -833,9 +834,7 @@ where T: Digit
     type Output = UBig<T>;
     fn mul(self, digit: T) -> Self::Output
     {
-        let mut product = self.clone();
-        product *= digit;
-        product
+        self.clone() * digit
     }
 }
 
@@ -843,9 +842,10 @@ impl<T> std::ops::Mul<T> for UBig<BinaryDigit<T>>
 where BinaryDigit<T>: Digit
 {
     type Output = Self;
-    fn mul(self, digit: T) -> Self::Output
+    fn mul(mut self, digit: T) -> Self::Output
     {
-        &self * digit
+        self *= digit;
+        self
     }
 }
 
@@ -855,9 +855,7 @@ where BinaryDigit<T>: Digit
     type Output = UBig<BinaryDigit<T>>;
     fn mul(self, digit: T) -> Self::Output
     {
-        let mut product = self.clone();
-        product *= digit;
-        product
+        self.clone() * digit
     }
 }
 
@@ -865,9 +863,10 @@ impl<T> std::ops::Mul<T> for UBig<DecimalDigit<T>>
 where T: DigitStorage, DecimalDigit<T>: Digit
 {
     type Output = Self;
-    fn mul(self, digit: T) -> Self::Output
+    fn mul(mut self, digit: T) -> Self::Output
     {
-        &self * digit
+        self *= digit;
+        self
     }
 }
 
@@ -877,9 +876,7 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     type Output = UBig<DecimalDigit<T>>;
     fn mul(self, digit: T) -> Self::Output
     {
-        let mut product = self.clone();
-        product *= digit;
-        product
+        self.clone() * digit
     }
 }
 
@@ -971,9 +968,10 @@ impl<T> std::ops::Shl<usize> for UBig<T>
 where T: Digit, UBig<T>: std::ops::ShlAssign<usize>
 {
     type Output = Self;
-    fn shl(self, n: usize) -> Self::Output
+    fn shl(mut self, n: usize) -> Self::Output
     {
-        &self << n
+        self <<= n;
+        self
     }
 }
 
@@ -983,9 +981,7 @@ where T: Digit, UBig<T>: std::ops::ShlAssign<usize>
     type Output = UBig<T>;
     fn shl(self, n: usize) -> Self::Output
     {
-        let mut shifted = self.clone();
-        shifted <<= n;
-        shifted
+        self.clone() << n
     }
 }
 
@@ -1030,9 +1026,10 @@ impl<T> std::ops::Shr<usize> for UBig<T>
 where T: Digit, UBig<T>: std::ops::ShrAssign<usize>
 {
     type Output = Self;
-    fn shr(self, n: usize) -> Self::Output
+    fn shr(mut self, n: usize) -> Self::Output
     {
-        &self >> n
+        self >>= n;
+        self
     }
 }
 
@@ -1042,9 +1039,7 @@ where T: Digit, UBig<T>: std::ops::ShrAssign<usize>
     type Output = UBig<T>;
     fn shr(self, n: usize) -> Self::Output
     {
-        let mut shifted = self.clone();
-        shifted >>= n;
-        shifted
+        self.clone() >> n
     }
 }
 
@@ -1118,9 +1113,10 @@ impl<T> std::ops::Sub<T> for UBig<T>
 where T: Digit
 {
     type Output = Self;
-    fn sub(self, digit: T) -> Self::Output
+    fn sub(mut self, digit: T) -> Self::Output
     {
-        &self - digit
+        self -= digit;
+        self
     }
 }
 
@@ -1130,9 +1126,7 @@ where T: Digit
     type Output = UBig<T>;
     fn sub(self, digit: T) -> Self::Output
     {
-        let mut difference = self.clone();
-        difference -= digit;
-        difference
+        self.clone() - digit
     }
 }
 
@@ -1140,9 +1134,10 @@ impl<T> std::ops::Sub<T> for UBig<BinaryDigit<T>>
 where T: DigitStorage, BinaryDigit<T>: Digit
 {
     type Output = Self;
-    fn sub(self, digit: T) -> Self::Output
+    fn sub(mut self, digit: T) -> Self::Output
     {
-        &self - digit
+        self -= digit;
+        self
     }
 }
 
@@ -1152,9 +1147,7 @@ where T: DigitStorage, BinaryDigit<T>: Digit
     type Output = UBig<BinaryDigit<T>>;
     fn sub(self, digit: T) -> Self::Output
     {
-        let mut difference = self.clone();
-        difference -= digit;
-        difference
+        self.clone() - digit
     }
 }
 
@@ -1162,9 +1155,10 @@ impl<T> std::ops::Sub<T> for UBig<DecimalDigit<T>>
 where T: DigitStorage, DecimalDigit<T>: Digit
 {
     type Output = Self;
-    fn sub(self, digit: T) -> Self::Output
+    fn sub(mut self, digit: T) -> Self::Output
     {
-        &self - digit
+        self -= digit;
+        self
     }
 }
 
@@ -1174,9 +1168,7 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     type Output = UBig<DecimalDigit<T>>;
     fn sub(self, digit: T) -> Self::Output
     {
-        let mut difference = self.clone();
-        difference -= digit;
-        difference
+        self.clone() - digit
     }
 }
 
@@ -1186,7 +1178,7 @@ where T: Digit
     type Output = Self;
     fn sub(self, other: UBig<T>) -> Self::Output
     {
-        &self - &other
+        self - &other
     }
 }
 
@@ -1194,9 +1186,10 @@ impl<T> std::ops::Sub<&UBig<T>> for UBig<T>
 where T: Digit
 {
     type Output = Self;
-    fn sub(self, other: &UBig<T>) -> Self::Output
+    fn sub(mut self, other: &UBig<T>) -> Self::Output
     {
-        &self - other
+        self -= other;
+        self
     }
 }
 
@@ -1206,7 +1199,7 @@ where T: Digit
     type Output = UBig<T>;
     fn sub(self, other: UBig<T>) -> Self::Output
     {
-        self - &other
+        self.clone() - &other
     }
 }
 
@@ -1216,9 +1209,7 @@ where T: Digit
     type Output = UBig<T>;
     fn sub(self, other: &UBig<T>) -> Self::Output
     {
-        let mut difference = self.clone();
-        difference -= other;
-        difference
+        self.clone() - other
     }
 }
 
@@ -1228,24 +1219,14 @@ where T: Digit
     type Output = Self;
     fn pow(self, exp: usize) -> Self::Output
     {
-        (&self).pow(exp)
-    }
-}
-
-impl<T> num_traits::Pow<usize> for &UBig<T>
-where T: Digit
-{
-    type Output = UBig<T>;
-    fn pow(self, exp: usize) -> Self::Output
-    {
         match exp
         {
             0 => UBig::one(),
-            1 => self.clone(),
+            1 => self,
             2 => self.square(),
             _ => {
                 let mut result = if exp % 2 == 0 { UBig::one() } else { self.clone() };
-                let mut power = self.clone();
+                let mut power = self;
                 let mut n = exp / 2;
                 while n > 0
                 {
@@ -1259,6 +1240,16 @@ where T: Digit
                 result
             }
         }
+    }
+}
+
+impl<T> num_traits::Pow<usize> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn pow(self, exp: usize) -> Self::Output
+    {
+        self.clone().pow(exp)
     }
 }
 
