@@ -112,11 +112,19 @@ impl<T> UBig<T>
     fn mul_add_assign_digit(&mut self, fac: T, offset: T)
     where T: Digit
     {
-        if let Some(digit) = mul::mul_add_assign_digit(&mut self.digits, fac, offset)
+        let carry = if fac.is_zero()
+            {
+                self.digits.clear();
+                offset
+            }
+            else
+            {
+                mul::mul_add_assign_digit(&mut self.digits, fac, offset)
+            };
+        if !carry.is_zero()
         {
-            self.digits.push(digit);
+            self.digits.push(carry);
         }
-        self.drop_leading_zeros();
     }
 
     /// Multiply this number by the two-digit number `fac_low+b*fac_high`, where `b` is the base
@@ -178,34 +186,65 @@ impl<T> UBig<T>
     fn div_assign_digit(&mut self, fac: T) -> Result<T>
     where T: Digit
     {
-        if fac.is_zero()
+        let (nquot, rem) = div::div_assign_digit(&mut self.digits, fac)?;
+        if nquot < self.nr_digits()
         {
-            Err(Error::DivisionByZero)
+            self.digits.truncate(nquot);
         }
-        else
-        {
-            let rem = div::div_assign_digit(&mut self.digits, fac);
-            self.drop_leading_zeros();
-            Ok(rem)
-        }
+        Ok(rem)
     }
 
     /// Divide this number by the two-digit number `fac_low+b*fac_high`, where `b` is the base
     /// of this number, and return the remainder. If both fac_low and fac_high are zero,
-    /// a DivideByZero error is returned.
-    fn div_pair_assign_digit(&mut self, fac_low: T, fac_high: T) -> Result<(T, T)>
+    /// a DivisionByZero error is returned.
+    fn div_assign_digit_pair(&mut self, fac_low: T, fac_high: T) -> Result<(T, T)>
     where T: Digit
     {
-        if fac_high.is_zero()
+        let (nquot, rem_low, rem_high) = div::div_assign_digit_pair(&mut self.digits, fac_low, fac_high)?;
+        if nquot < self.nr_digits()
         {
-            self.div_assign_digit(fac_low).map(|rem| (rem, T::zero()))
+            self.digits.truncate(nquot);
+        }
+        Ok((rem_low, rem_high))
+    }
+
+    /// Divide this number by `other`, store the quotient in `self`, and return the remainder. If
+    /// `other` is zero, a `DivisionByZero` error is returned.
+    pub fn div_assign_big(&mut self, other: &Self) -> Result<Self>
+    where T: Digit
+    {
+        let nnum = self.nr_digits();
+        let nden = other.nr_digits();
+
+        if nnum < nden
+        {
+            let rem = std::mem::replace(&mut self.digits, vec![]);
+            Ok(Self::new(rem))
         }
         else
         {
-            let rem = div::div_pair_assign_digit(&mut self.digits, fac_low, fac_high);
-            self.drop_leading_zeros();
-            Ok(rem)
+            let mut rem = std::mem::replace(&mut self.digits, vec![T::zero(); nnum-nden+1]);
+            let (nquot, nrem) = crate::ubig::div::div_big(&mut rem, &other.digits, &mut self.digits)?;
+            self.digits.truncate(nquot);
+            rem.truncate(nrem);
+            Ok(Self::new(rem))
         }
+    }
+
+    /// Divide this number by `other` and store the remainder in `self`. If `other` is zero,
+    /// a `DivisionByZero` error is returned.
+    pub fn rem_assign_big(&mut self, other: &Self) -> Result<()>
+    where T: Digit
+    {
+        let nnum = self.nr_digits();
+        let nden = other.nr_digits();
+        if nnum >= nden
+        {
+            let mut quot = vec![T::zero(); nnum-nden+1];
+            let (_, nrem) = crate::ubig::div::div_big(&mut self.digits, &other.digits, &mut quot)?;
+            self.digits.truncate(nrem);
+        }
+        Ok(())
     }
 }
 
@@ -217,9 +256,8 @@ impl<T> UBig<BinaryDigit<T>>
     {
         match self.nr_digits()
         {
-            0 => UBig::zero(),
-            1 => UBig::<DecimalDigit<T>>::from(self.digits[0].0),
-            n => {
+            0|1 => Self::build_decimal(&self.digits, &[]),
+            n   => {
                 let half_nr_bits = BinaryDigit::<T>::NR_BITS / 2;
                 let pow_max = 8 * std::mem::size_of::<usize>() as u32 - n.leading_zeros() - 1;
                 let mut scale = (UBig::one() << half_nr_bits) << half_nr_bits;
@@ -692,10 +730,31 @@ where T: DigitStorage, DecimalDigit<T>: Digit
         else
         {
             let (high, low) = DecimalDigit::split(n);
-            if let Err(err) = self.div_pair_assign_digit(low, high)
+            if let Err(err) = self.div_assign_digit_pair(low, high)
             {
                 panic!("Failed to perform division: {}", err);
             }
+        }
+    }
+}
+
+impl<T> std::ops::DivAssign<UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn div_assign(&mut self, other: UBig<T>)
+    {
+        *self /= &other;
+    }
+}
+
+impl<T> std::ops::DivAssign<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn div_assign(&mut self, other: &UBig<T>)
+    {
+        if let Err(err) = self.div_assign_big(other)
+        {
+            panic!("Failed to perform division: {}", err);
         }
     }
 }
@@ -760,6 +819,47 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     fn div(self, n: T) -> Self::Output
     {
         self.clone() / n
+    }
+}
+
+impl<T> std::ops::Div<UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn div(self, other: Self) -> Self::Output
+    {
+        self / &other
+    }
+}
+
+impl<T> std::ops::Div<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn div(mut self, other: &UBig<T>) -> Self::Output
+    {
+        self /= other;
+        self
+    }
+}
+
+impl<T> std::ops::Div<UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn div(self, other: UBig<T>) -> Self::Output
+    {
+        self.clone() / &other
+    }
+}
+
+impl<T> std::ops::Div<&UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn div(self, other: &UBig<T>) -> Self::Output
+    {
+        self.clone() / other
     }
 }
 
@@ -998,8 +1098,11 @@ where BinaryDigit<T>: Digit
         }
         if low != 0
         {
-            shr::shr_carry_assign_within_digit(&mut self.digits, low, BinaryDigit::zero());
-            self.drop_leading_zeros();
+            let (nd, _) = shr::shr_carry_assign_within_digit(&mut self.digits, low, BinaryDigit::zero());
+            if nd < self.nr_digits()
+            {
+                self.digits.truncate(nd);
+            }
         }
     }
 }
@@ -1011,8 +1114,11 @@ where T: DigitStorage, DecimalDigit<T>: Digit
     {
         if n <= 4 * DecimalDigit::<T>::MAX_HEX_PLACES
         {
-            shr::shr_carry_assign_within_digit(&mut self.digits, n, DecimalDigit::zero());
-            self.drop_leading_zeros();
+            let (nd, _) = shr::shr_carry_assign_within_digit(&mut self.digits, n, DecimalDigit::zero());
+            if nd < self.nr_digits()
+            {
+                self.digits.truncate(nd);
+            }
         }
         else
         {

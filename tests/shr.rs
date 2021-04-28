@@ -1,4 +1,4 @@
-use babs::{UBigBin32, UBigDec32};
+use babs::{UBigBin32, UBigBin64, UBigDec32, UBigDec64};
 use num_traits::Zero;
 use std::str::FromStr;
 
@@ -21,7 +21,19 @@ fn test_shr_assign_binary()
     n >>= 82;
     assert_eq!(format!("{:#x}", n), "0x0");
 
+    let mut n = UBigBin32::from_str("0x71919fc729e01f34d132").unwrap();
+    n >>= 0;
+    assert_eq!(format!("{:#x}", n), "0x71919fc729e01f34d132");
+
     let mut n = UBigBin32::from_str("0xfffffffffffffffffffffffffffffffffffffffffff").unwrap();
+    n >>= 128;
+    assert_eq!(format!("{:#x}", n), "0xfffffffffff");
+
+    let mut n = UBigBin64::from_str("0x71919fc729e01f34d132").unwrap();
+    n >>= 0;
+    assert_eq!(format!("{:#x}", n), "0x71919fc729e01f34d132");
+
+    let mut n = UBigBin64::from_str("0xfffffffffffffffffffffffffffffffffffffffffff").unwrap();
     n >>= 128;
     assert_eq!(format!("{:#x}", n), "0xfffffffffff");
 }
@@ -38,9 +50,21 @@ fn test_shr_binary()
     let n = UBigBin32::from_str("0x71919fc729e01f34d132").unwrap() >> 73;
     assert_eq!(format!("{:#x}", n), "0x38");
 
+    let n = UBigBin32::from_str("0x71919fc729e01f34d132").unwrap() >> 0;
+    assert_eq!(format!("{:#x}", n), "0x71919fc729e01f34d132");
+
     let n = UBigBin32::from_str("0x71919fc729e01f34d132").unwrap() >> 82;
     assert_eq!(format!("{:#x}", n), "0x0");
 
     let n = UBigBin32::from_str("0xfffffffffffffffffffffffffffffffffffffffffff").unwrap() >> 128;
+    assert_eq!(format!("{:#x}", n), "0xfffffffffff");
+
+    let n = UBigBin64::from_str("0x71919fc729e01f34d132").unwrap() >> 73;
+    assert_eq!(format!("{:#x}", n), "0x38");
+
+    let n = UBigBin64::from_str("0x71919fc729e01f34d132").unwrap() >> 0;
+    assert_eq!(format!("{:#x}", n), "0x71919fc729e01f34d132");
+
+    let n = UBigBin64::from_str("0xfffffffffffffffffffffffffffffffffffffffffff").unwrap() >> 128;
     assert_eq!(format!("{:#x}", n), "0xfffffffffff");
 }

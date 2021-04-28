@@ -7,12 +7,14 @@ use crate::digit::Digit;
 pub fn shl_carry_assign_within_digit<T>(nr: &mut [T], shift: usize, carry: T) -> T
 where T: Digit
 {
-    let mut carry = carry;
-    for d in nr.iter_mut()
+    if shift == 0
     {
-        carry = d.shl_carry_assign(shift, carry);
+        T::zero()
     }
-    carry
+    else
+    {
+        nr.iter_mut().fold(carry, |carry, d| d.shl_carry_assign(shift, carry))
+    }
 }
 
 #[cfg(test)]
@@ -34,6 +36,11 @@ mod tests
         assert_eq!(n, [BinaryDigit(0x2a097fff), BinaryDigit(0x6f7f0339), BinaryDigit(0xa56a0b7d)]);
         assert_eq!(carry, BinaryDigit(0x30e0));
 
+        let mut n = [BinaryDigit(0x06725412u32), BinaryDigit(0x16fadefe), BinaryDigit(0x61c14ad4)];
+        let carry = shl_carry_assign_within_digit(&mut n, 0, BinaryDigit(0));
+        assert_eq!(n, [BinaryDigit(0x06725412), BinaryDigit(0x16fadefe), BinaryDigit(0x61c14ad4)]);
+        assert_eq!(carry, BinaryDigit(0));
+
         let mut n = [
             BinaryDigit(0x5412u16),
             BinaryDigit(0x0672),
@@ -52,6 +59,16 @@ mod tests
             BinaryDigit(0xa56a)
         ]);
         assert_eq!(carry, BinaryDigit(0x30e0));
+
+        let mut n = [BinaryDigit(0x7ff842defad35212_u64), BinaryDigit(0x187288192)];
+        let carry = shl_carry_assign_within_digit(&mut n, 15, BinaryDigit(0x7fff));
+        assert_eq!(n, [BinaryDigit(0x216f7d69a9097fff), BinaryDigit(0xc39440c93ffc)]);
+        assert_eq!(carry, BinaryDigit(0));
+
+        let mut n = [BinaryDigit(0x7ff842defad35212_u64), BinaryDigit(0x187288192)];
+        let carry = shl_carry_assign_within_digit(&mut n, 52, BinaryDigit(0x8922017fff));
+        assert_eq!(n, [BinaryDigit(0x2120008922017fff), BinaryDigit(0x1927ff842defad35)]);
+        assert_eq!(carry, BinaryDigit(0x187288));
     }
 
     #[test]
@@ -61,6 +78,11 @@ mod tests
         let carry = shl_carry_assign_within_digit(&mut n, 15, DecimalDigit(9_999));
         assert_eq!(n, []);
         assert_eq!(carry, DecimalDigit(9_999));
+
+        let mut n = [DecimalDigit(9_567_u16), DecimalDigit(1_253), DecimalDigit(14)];
+        let carry = shl_carry_assign_within_digit(&mut n, 0, DecimalDigit(0));
+        assert_eq!(n, [DecimalDigit(9_567), DecimalDigit(1_253), DecimalDigit(14)]);
+        assert_eq!(carry, DecimalDigit(0));
 
         let mut n = [DecimalDigit(826_211_332u32), DecimalDigit(187_721_198), DecimalDigit(987_365_181)];
         let carry = shl_carry_assign_within_digit(&mut n, 15, DecimalDigit(9_999));
@@ -87,5 +109,13 @@ mod tests
             DecimalDigit(2_123)
         ]);
         assert_eq!(carry, DecimalDigit(202));
+
+        let mut n = [DecimalDigit(9_876_543_210_987_654_321_u64), DecimalDigit(1_234_567_890_123_456_789)];
+        let carry = shl_carry_assign_within_digit(&mut n, 34, DecimalDigit(111_222_333));
+        assert_eq!(n, [
+            DecimalDigit(4_891_212_673_903_566_397),
+            DecimalDigit(1_087_873_261_864_462_211),
+        ]);
+        assert_eq!(carry, DecimalDigit(2_120_971_485));
     }
 }
