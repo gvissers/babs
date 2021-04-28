@@ -12,6 +12,8 @@ num-traits = "0.2"
 
 [dev-dependencies]
 criterion = "0.3"
+rand = "0.8"
+rand_xoshiro = "0.6"
 
 [[bench]]
 name = "bench_main"
