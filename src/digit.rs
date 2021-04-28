@@ -565,8 +565,8 @@ macro_rules! impl_digit_decimal
             #[inline]
             fn shl_carry_assign(&mut self, shift: usize, carry: Self) -> Self
             {
-                let tmp = self.0 as $wdt << shift;
-                self.0 = (tmp % <$dt>::DECIMAL_RADIX as $wdt) as $dt + carry.0;
+                let tmp = (self.0 as $wdt << shift) + carry.0 as $wdt;
+                self.0 = (tmp % <$dt>::DECIMAL_RADIX as $wdt) as $dt;
                 DecimalDigit((tmp / <$dt>::DECIMAL_RADIX as $wdt) as $dt)
             }
 
@@ -731,9 +731,9 @@ impl Digit for DecimalDigit<u64>
     #[inline]
     fn shl_carry_assign(&mut self, shift: usize, carry: Self) -> Self
     {
-        let tmp = (self.0 as u128) << shift;
+        let tmp = ((self.0 as u128) << shift) + carry.0 as u128;
         let (q, r) = Self::div_rem_base(tmp);
-        self.0 = r + carry.0;
+        self.0 = r;
         DecimalDigit(q)
     }
 
