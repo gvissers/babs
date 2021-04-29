@@ -95,10 +95,14 @@ pub trait Digit:
     /// Multiply this digit by `fac` and add `carry`. The lower part of the result is stored in
     /// `self`, the upper part is returned as carry.
     fn mul_carry_assign(&mut self, fac: Self, carry: Self) -> Self;
+    /// Compute the remainder after dividing `carry`*`b` + this digit by `fac`, where `b` is the
+    /// base of this digit. The divisor `fac` should not be zero, and `carry` should be less
+    /// than the divisor, i.e. `0 ≤ carry < fac < b`.
+    fn rem_carry(&self, fac: Self, carry: Self) -> Self;
     /// Divide `carry`*`b` + this digit by `fac`, where `b` is the base of this digit, and store the
     /// result back into this digit . The remainder of the division is returned as carry. The
-    /// divisor `fac` should not be zero, and the `carry` should be less than the divisor, i.e.
-    /// `0 <= carry < fac`.
+    /// divisor `fac` should not be zero, and `carry` should be less than the divisor, i.e.
+    /// `0 ≤ carry < fac < b`.
     fn div_carry_assign(&mut self, fac: Self, carry: Self) -> Self;
     /// Divide `carry`*`b` + this digit by 3, where `b` is the base of this digit, and store the
     /// result back into this digit . The remainder of the division is returned as carry. The
@@ -211,6 +215,13 @@ macro_rules! impl_digit_binary
                 let tmp = self.0 as $wdt * fac.0 as $wdt + carry.0 as $wdt;
                 self.0 = (tmp & Self::MAX.0 as $wdt) as $dt;
                 BinaryDigit((tmp >> Self::NR_BITS) as $dt)
+            }
+
+            #[inline]
+            fn rem_carry(&self, fac: Self, carry: Self) -> Self
+            {
+                let tmp = (carry.0 as $wdt << Self::NR_BITS) | self.0 as $wdt;
+                BinaryDigit((tmp % fac.0 as $wdt) as $dt)
             }
 
             #[inline]
@@ -335,6 +346,13 @@ impl Digit for BinaryDigit<u64>
         let tmp = self.0 as u128 * fac.0 as u128 + carry.0 as u128;
         self.0 = (tmp & Self::MAX.0 as u128) as u64;
         BinaryDigit((tmp >> Self::NR_BITS) as u64)
+    }
+
+    #[inline]
+    fn rem_carry(&self, fac: Self, carry: Self) -> Self
+    {
+        let tmp = ((carry.0 as u128) << Self::NR_BITS) | self.0 as u128;
+        BinaryDigit((tmp % fac.0 as u128) as u64)
     }
 
     #[inline]
@@ -603,6 +621,13 @@ macro_rules! impl_digit_decimal
             }
 
             #[inline]
+            fn rem_carry(&self, fac: Self, carry: Self) -> Self
+            {
+                let tmp = carry.0 as $wdt * <$dt>::DECIMAL_RADIX as $wdt + self.0 as $wdt;
+                DecimalDigit((tmp % fac.0 as $wdt) as $dt)
+            }
+
+            #[inline]
             fn div_carry_assign(&mut self, fac: Self, carry: Self) -> Self
             {
                 let tmp = carry.0 as $wdt * <$dt>::DECIMAL_RADIX as $wdt + self.0 as $wdt;
@@ -769,6 +794,13 @@ impl Digit for DecimalDigit<u64>
         let (q, r) = Self::div_rem_base(tmp);
         self.0 = r;
         DecimalDigit(q)
+    }
+
+    #[inline]
+    fn rem_carry(&self, fac: Self, carry: Self) -> Self
+    {
+        let tmp = carry.0 as u128 * u64::DECIMAL_RADIX as u128 + self.0 as u128;
+        DecimalDigit((tmp % fac.0 as u128) as u64)
     }
 
     #[inline]
@@ -1555,6 +1587,46 @@ mod tests
         let carry = d.mul_carry_assign(DecimalDigit(999_999_999), DecimalDigit(999_999_999));
         assert_eq!(d, DecimalDigit(0));
         assert_eq!(carry, DecimalDigit(999_999_999));
+    }
+
+    #[test]
+    fn test_rem_carry_binary()
+    {
+        let d = BinaryDigit(0_u8);
+        let rem = d.rem_carry(BinaryDigit(0x23), BinaryDigit(0x21));
+        assert_eq!(rem, BinaryDigit(0x0d));
+
+        let d = BinaryDigit(0x24f5_u16);
+        let rem = d.rem_carry(BinaryDigit(0x1341), BinaryDigit(0x0785));
+        assert_eq!(rem, BinaryDigit(0x0df9));
+
+        let d = BinaryDigit(0xf3f3f3f3_u32);
+        let rem = d.rem_carry(BinaryDigit(0x98765432), BinaryDigit(0x0fedcba9));
+        assert_eq!(rem, BinaryDigit(0x1a06aab5));
+
+        let d = BinaryDigit(0xf47df53746dd12ac_u64);
+        let rem = d.rem_carry(BinaryDigit(0xf2da5f2567822638), BinaryDigit(0xe35728282783dfcd));
+        assert_eq!(rem, BinaryDigit(0x94d2e9f9dfaf121c));
+    }
+
+    #[test]
+    fn test_rem_carry_decimal()
+    {
+        let d = DecimalDigit(0_u8);
+        let rem = d.rem_carry(DecimalDigit(23), DecimalDigit(21));
+        assert_eq!(rem, DecimalDigit(7));
+
+        let d = DecimalDigit(7_356_u16);
+        let rem = d.rem_carry(DecimalDigit(6_543), DecimalDigit(4_878));
+        assert_eq!(rem, DecimalDigit(2_748));
+
+        let d = DecimalDigit(673_987_213_u32);
+        let rem = d.rem_carry(DecimalDigit(985_310_213), DecimalDigit(5_340));
+        assert_eq!(rem, DecimalDigit(292_632_753));
+
+        let d = DecimalDigit(3_219_876_444_342_231_999_u64);
+        let rem = d.rem_carry(DecimalDigit(4_216_766_493_986_433_786), DecimalDigit(3_987_463_233_760_756_987));
+        assert_eq!(rem, DecimalDigit(4_017_986_314_238_083_705));
     }
 
     #[test]

@@ -2,6 +2,22 @@ use crate::digit::Digit;
 use crate::result::{Error, Result};
 use crate::ubig::support::drop_leading_zeros;
 
+/// Calculate the remainder after dividing the number or number part represented by the digits in
+/// `nr` by the single digit `fac`. If `fac` is zero, a `DivisionByZero` error is returned.
+pub fn rem_digit<T>(nr: &[T], fac: T) -> Result<T>
+where T: Digit
+{
+    if fac.is_zero()
+    {
+        Err(Error::DivisionByZero)
+    }
+    else
+    {
+        let rem = nr.iter().rev().fold(T::zero(), |carry, d| d.rem_carry(fac, carry));
+        Ok(rem)
+    }
+}
+
 /// Divide the number or number part represented by the digits in `nr` by 3. The carry should
 /// be less than 3. Returns the number of digits in the quotient, and the remainder after the
 /// division.
@@ -15,7 +31,8 @@ where T: Digit
 }
 
 /// Divide the number or number part represented by the digits in `nr` by the single digit `fac`.
-/// Returns the nuber of digits in the quotient, and the remainder.
+/// Returns the nuber of digits in the quotient, and the remainder. If `fac` is zero, a
+/// `DivisionByZero` error is returned.
 pub fn div_assign_digit<T>(nr: &mut [T], fac: T) -> Result<(usize, T)>
 where T: Digit
 {
@@ -223,6 +240,64 @@ mod tests
     use super::*;
     use crate::digit::{BinaryDigit, DecimalDigit};
     use num_traits::Zero;
+
+    #[test]
+    fn test_rem_digit_binary()
+    {
+        let n: [BinaryDigit<u8>; 0] = [];
+        let rem = rem_digit(&n, BinaryDigit(0x23)).unwrap();
+        assert_eq!(rem, BinaryDigit(0));
+
+        let n = [BinaryDigit(0x34_u8), BinaryDigit(0x23), BinaryDigit(0xac), BinaryDigit(0x6f)];
+        let rem = rem_digit(&n, BinaryDigit(0x23)).unwrap();
+        assert_eq!(rem, BinaryDigit(0x0a));
+
+        let n = [BinaryDigit(0x34_u16), BinaryDigit(0x23), BinaryDigit(0xac), BinaryDigit(0x6f)];
+        let rem = rem_digit(&n, BinaryDigit(0x23)).unwrap();
+        assert_eq!(rem, BinaryDigit(0x19));
+
+        let n = [BinaryDigit(0x34726fd5_u32), BinaryDigit(0x23467fff), BinaryDigit(0x45fffd54)];
+        let rem = rem_digit(&n, BinaryDigit(0xa53f542d)).unwrap();
+        assert_eq!(rem, BinaryDigit(0x17330f46));
+
+        let n = [
+            BinaryDigit(0xa34726fd5f656622_u64),
+            BinaryDigit(0x1234567823467fff),
+            BinaryDigit(0x45fffd54d6f24acc),
+            BinaryDigit(0x45fffd54d6f24acc)
+        ];
+        let rem = rem_digit(&n, BinaryDigit(0xa53f542d45cdfe23)).unwrap();
+        assert_eq!(rem, BinaryDigit(0x53b0ca121b88387a));
+    }
+
+    #[test]
+    fn test_rem_digit_decimal()
+    {
+        let n: [DecimalDigit<u8>; 0] = [];
+        let rem = rem_digit(&n, DecimalDigit(23)).unwrap();
+        assert_eq!(rem, DecimalDigit(0));
+
+        let n = [DecimalDigit(34_u8), DecimalDigit(23), DecimalDigit(87), DecimalDigit(94)];
+        let rem = rem_digit(&n, DecimalDigit(23)).unwrap();
+        assert_eq!(rem, DecimalDigit(2));
+
+        let n = [DecimalDigit(34_u16), DecimalDigit(23), DecimalDigit(87), DecimalDigit(94)];
+        let rem = rem_digit(&n, DecimalDigit(23)).unwrap();
+        assert_eq!(rem, DecimalDigit(4));
+
+        let n = [DecimalDigit(786_333_654_u32), DecimalDigit(877_956_000), DecimalDigit(999)];
+        let rem = rem_digit(&n, DecimalDigit(746_338_876)).unwrap();
+        assert_eq!(rem, DecimalDigit(589_833_110));
+
+        let n = [
+            DecimalDigit(4_887_845_550_996_777_877_u64),
+            DecimalDigit(3_569_987_999_789_676_455),
+            DecimalDigit(6_767_888_677_923_221_344),
+            DecimalDigit(2_898_999_342_484_877_009)
+        ];
+        let rem = rem_digit(&n, DecimalDigit(3_575_466_978_777_965_622)).unwrap();
+        assert_eq!(rem, DecimalDigit(3_225_957_266_729_764_797));
+    }
 
     #[test]
     fn test_div3_carry_assign_binary()

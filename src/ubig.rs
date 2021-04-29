@@ -232,6 +232,14 @@ impl<T> UBig<T>
         }
     }
 
+    /// Compute the remainder after dividing this number by `fac`. If `fac` is zero, a
+    /// `DivisionByZero` error is returned.
+    fn rem_digit(&self, fac: T) -> Result<T>
+    where T: Digit
+    {
+        crate::ubig::div::rem_digit(&self.digits, fac)
+    }
+
     /// Divide this number by `other` and store the remainder in `self`. If `other` is zero,
     /// a `DivisionByZero` error is returned.
     pub fn rem_assign_big(&mut self, other: &Self) -> Result<()>

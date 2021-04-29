@@ -496,6 +496,196 @@ where T: Digit
 }
 
 
+impl<T> std::ops::RemAssign<T> for UBig<T>
+where T: Digit
+{
+    fn rem_assign(&mut self, digit: T)
+    {
+        match self.rem_digit(digit)
+        {
+            Ok(rem) => {
+                self.digits.clear();
+                if !rem.is_zero()
+                {
+                    self.digits.push(rem);
+                }
+            },
+            Err(err) => { panic!("Failed to compute remainder: {}", err); }
+        }
+    }
+}
+
+impl<T> std::ops::RemAssign<T> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    fn rem_assign(&mut self, digit: T)
+    {
+        *self %= BinaryDigit(digit);
+    }
+}
+
+impl<T> std::ops::RemAssign<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    fn rem_assign(&mut self, n: T)
+    {
+        if DecimalDigit::fits_single(n)
+        {
+            *self %= DecimalDigit(n);
+        }
+        else
+        {
+            // FIXME? Perhaps a non-detructive rem_digit_pair() function could be created. Not
+            // worth the trouble for the moment, though.
+            let (high, low) = DecimalDigit::split(n);
+            match self.div_assign_digit_pair(low, high)
+            {
+                Ok((rem_low, rem_high)) => {
+                    self.digits.clear();
+                    if !rem_high.is_zero()
+                    {
+                        self.digits.push(rem_low);
+                        self.digits.push(rem_high);
+                    }
+                    else if !rem_low.is_zero()
+                    {
+                        self.digits.push(rem_low);
+                    }
+                },
+                Err(err) => { panic!("Failed to compute remainder: {}", err); }
+            }
+        }
+    }
+}
+
+impl<T> std::ops::RemAssign<UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn rem_assign(&mut self, other: UBig<T>)
+    {
+        *self %= &other;
+    }
+}
+
+impl<T> std::ops::RemAssign<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    fn rem_assign(&mut self, other: &UBig<T>)
+    {
+        if let Err(err) = self.rem_assign_big(other)
+        {
+            panic!("Failed to compute remainder: {}", err);
+        }
+    }
+}
+
+impl<T> std::ops::Rem<T> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn rem(self, digit: T) -> Self::Output
+    {
+        &self % digit
+    }
+}
+
+impl<T> std::ops::Rem<T> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn rem(self, digit: T) -> Self::Output
+    {
+        match self.rem_digit(digit)
+        {
+            Ok(rem) => UBig::new(vec![rem]),
+            Err(err) => { panic!("Failed to compute remainder: {}", err) }
+        }
+    }
+}
+
+impl<T> std::ops::Rem<T> for UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    type Output = Self;
+    fn rem(self, digit: T) -> Self::Output
+    {
+        &self % digit
+    }
+}
+
+impl<T> std::ops::Rem<T> for &UBig<BinaryDigit<T>>
+where BinaryDigit<T>: Digit
+{
+    type Output = UBig<BinaryDigit<T>>;
+    fn rem(self, digit: T) -> Self::Output
+    {
+        self % BinaryDigit(digit)
+    }
+}
+
+impl<T> std::ops::Rem<T> for UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = Self;
+    fn rem(mut self, digit: T) -> Self::Output
+    {
+        self %= digit;
+        self
+    }
+}
+
+impl<T> std::ops::Rem<T> for &UBig<DecimalDigit<T>>
+where T: DigitStorage, DecimalDigit<T>: Digit
+{
+    type Output = UBig<DecimalDigit<T>>;
+    fn rem(self, digit: T) -> Self::Output
+    {
+        self.clone() % digit
+    }
+}
+
+impl<T> std::ops::Rem<UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn rem(self, other: Self) -> Self::Output
+    {
+        self % &other
+    }
+}
+
+impl<T> std::ops::Rem<&UBig<T>> for UBig<T>
+where T: Digit
+{
+    type Output = Self;
+    fn rem(mut self, other: &UBig<T>) -> Self::Output
+    {
+        self %= other;
+        self
+    }
+}
+
+impl<T> std::ops::Rem<UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn rem(self, other: UBig<T>) -> Self::Output
+    {
+        self.clone() % &other
+    }
+}
+
+impl<T> std::ops::Rem<&UBig<T>> for &UBig<T>
+where T: Digit
+{
+    type Output = UBig<T>;
+    fn rem(self, other: &UBig<T>) -> Self::Output
+    {
+        self.clone() % other
+    }
+}
+
+
 impl<T> std::ops::ShlAssign<usize> for UBig<BinaryDigit<T>>
 where BinaryDigit<T>: Digit
 {
