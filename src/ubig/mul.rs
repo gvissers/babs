@@ -65,6 +65,24 @@ where T: Digit
     }
 }
 
+/// Calculate the maximum size of the scratch array necessary to perform multiplication
+/// on two `n`-digit numbers.
+pub fn calc_mul_work_size(n: usize) -> usize
+{
+    if n >= TOOM3_CUTOFF
+    {
+        toom3::calc_toom3_work_size(n)
+    }
+    else if n >= KARATSUBA_CUTOFF
+    {
+        karatsuba::calc_karatsuba_work_size(n)
+    }
+    else
+    {
+        0
+    }
+}
+
 /// Multiply the number represented by `nr0` by `nr1`, and store the  result in `product`. The
 /// result array must have space for at least `n0+n1` digits,  where `n0` denotes the number of
 /// digits in `nr0`, and `n1` the number of digits in `nr1`. Returns the number of digits in the
@@ -105,7 +123,7 @@ where T: Digit
 /// process, and store the result in `product`. The result array must have space for at least
 /// `n0+n1` digits,  where `n0` denotes the number of digits in `nr0`, and `n1` the number of digits
 /// in `nr1`. Returns the number of digits in the product.
-fn mul_big_into_with_work<T>(nr0: &[T], nr1: &[T], product: &mut [T], work: &mut [T]) -> usize
+pub(super) fn mul_big_into_with_work<T>(nr0: &[T], nr1: &[T], product: &mut [T], work: &mut [T]) -> usize
 where T: Digit
 {
     if nr0.is_empty() || nr1.is_empty()

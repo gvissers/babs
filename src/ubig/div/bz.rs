@@ -11,7 +11,8 @@ fn block_size(nden: usize) -> usize
 
 pub fn calc_div_bz_work_size(nden: usize) -> usize
 {
-    3 * block_size(nden) / 2 + 1
+    let n = block_size(nden);
+    3 * n / 2 + 1 + crate::ubig::mul::calc_mul_work_size(n / 2)
 }
 
 pub fn div_big_bz<T>(num: &mut [T], den: &[T], quot: &mut[T], work: &mut [T]) -> (usize, usize)
@@ -112,9 +113,10 @@ where T: Digit
         };
 
     let nb2 = drop_leading_zeros(b2, b2.len());
-    let nqden = crate::ubig::mul::mul_big_into(&quot[..nquot], &b2[..nb2], work);
+    let (qden, mul_work) = work.split_at_mut(3*n + 1);
+    let nqden = crate::ubig::mul::mul_big_into_with_work(&quot[..nquot], &b2[..nb2], qden, mul_work);
     debug_assert!(nqden <= 3*n);
-    let qden = &work[..nqden];
+    let qden = &qden[..nqden];
     let nnum = drop_leading_zeros(num, num.len());
     if crate::ubig::cmp::lt(&num[..nnum], qden)
     {
