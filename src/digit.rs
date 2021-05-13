@@ -128,6 +128,13 @@ impl<T> BinaryDigit<T>
     pub const NR_HEX_PLACES: usize = 2 * std::mem::size_of::<T>();
     /// The maximum decimal number that fits into a single digit
     pub const MAX_DECIMAL_PLACES: usize = std::mem::size_of::<T>() * 643 / 267;
+
+    /// Compute the maximum number of decimal places needed to express a number of `nr_digits`
+    /// binary digits
+    pub const fn nr_decimal_places(nr_digits: usize) -> usize
+    {
+        nr_digits * std::mem::size_of::<T>() * 643 / 267
+    }
 }
 
 macro_rules! impl_digit_binary
