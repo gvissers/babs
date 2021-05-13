@@ -1,6 +1,5 @@
 use super::UBig;
 use crate::digit::{BinaryDigit, DecimalDigit, Digit, DigitStorage};
-use crate::result::Error;
 use num_traits::{Zero, One, Pow};
 
 impl<T> std::ops::AddAssign<T> for UBig<T>
@@ -820,11 +819,11 @@ where T: Digit
 {
     fn sub_assign(&mut self, digit: T)
     {
-        if super::sub::sub_assign_digit(&mut self.digits, digit).is_some()
+        match super::sub::sub_assign_digit(&mut self.digits, digit)
         {
-            panic!("Failed to subtract: {}", Error::Underflow);
+            Ok(nd) => { self.digits.truncate(nd); },
+            Err(err) => { panic!("Failed to subtract: {}", err); }
         }
-        self.drop_leading_zeros();
     }
 }
 
@@ -850,11 +849,11 @@ where T: DigitStorage, DecimalDigit<T>: Digit
         {
             let (high, low) = DecimalDigit::split(n);
             *self -= low;
-            if super::sub::sub_assign_digit(&mut self.digits[1..], high).is_some()
+            match super::sub::sub_assign_digit(&mut self.digits[1..], high)
             {
-                panic!("Failed to subtract: {}", Error::Underflow);
+                Ok(nd) => { self.digits.truncate(nd); },
+                Err(err) => { panic!("Failed to subtract: {}", err); }
             }
-            self.drop_leading_zeros();
         }
     }
 }

@@ -95,16 +95,14 @@ impl<T> UBig<T>
     fn sub_assign_big_at_offset(&mut self, other: &Self, offset: usize) -> Result<&mut Self>
     where T: Digit
     {
-        let n0 = self.nr_digits();
-        let n1 = other.nr_digits();
-        if n0 < n1 + offset
-            || sub::sub_assign_big(&mut self.digits[offset..], &other.digits)
+        if self.nr_digits() < offset
         {
             Err(Error::Underflow)
         }
         else
         {
-            self.drop_leading_zeros();
+            let n0 = sub::sub_assign_big(&mut self.digits[offset..], &other.digits)?;
+            self.digits.truncate(n0);
             Ok(self)
         }
     }

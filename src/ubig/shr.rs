@@ -10,7 +10,8 @@ where T: Digit
 {
     if shift == 0
     {
-        (nr.len(), T::zero())
+        let nrem = drop_leading_zeros(nr, nr.len());
+        (nrem, T::zero())
     }
     else
     {

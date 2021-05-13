@@ -1,61 +1,94 @@
 use crate::digit::Digit;
 use crate::result::{Error, Result};
+use crate::ubig::support::drop_leading_zeros;
 
 /// Decrement the numer or number part represented by the digits in `nr` by one, and returns
-/// whether the number underflowed.
-pub fn dec_assign<T>(nr: &mut [T]) -> bool
+/// the number of digits in the result. If the original number is zero, an `Underflow` error is
+/// returned.
+pub fn dec_assign<T>(nr: &mut [T]) -> Result<usize>
 where T: Digit
 {
-    for digit in nr.iter_mut()
+    if nr.is_empty()
     {
-        if !digit.dec()
+        Err(Error::Underflow)
+    }
+    else
+    {
+        let n = nr.len();
+        for digit in nr[..n-1].iter_mut()
         {
-            return false;
+            if !digit.dec()
+            {
+                return Ok(n);
+            }
+        }
+
+        if nr[n-1].dec()
+        {
+            Err(Error::Underflow)
+        }
+        else if nr[n-1].is_zero()
+        {
+            Ok(n-1)
+        }
+        else
+        {
+            Ok(n)
         }
     }
-    true
 }
 
 /// Subtract the single digit `digit` from the number or number part represented by the digits in
-/// `nr`, and return the carry on underflow, or `None` if the number does not underflow.
-pub fn sub_assign_digit<T>(nr: &mut [T], digit: T) -> Option<T>
+/// `nr`, and return the number of digits in the result. If `digit` is larger than `nr`, an
+/// Underflow error is returned.
+pub fn sub_assign_digit<T>(nr: &mut [T], digit: T) -> Result<usize>
 where T: Digit
 {
     if digit.is_zero()
     {
-        None
+        Ok(nr.len())
     }
     else if nr.is_empty()
     {
-        Some(digit)
+        Err(Error::Underflow)
     }
     else if nr[0].sub_carry_assign(digit, false)
     {
-        dec_assign(&mut nr[1..]).then(T::one)
+        let nd = dec_assign(&mut nr[1..])?;
+        Ok(1 + nd)
     }
     else
     {
-        None
+        Ok(nr.len())
     }
 }
 
 /// Subtract the big number represented by the digits in `n1` from the number or number part represented
-/// by `n0`, and returns whether the number underflowed. The length of `nr1` must not be greater
-/// than the length of `nr0`.
-pub fn sub_assign_big<T>(nr0: &mut [T], nr1: &[T]) -> bool
+/// by `n0`, and returns the number of digits in the result. If `nr1` is greater than `nr0`, an
+/// `Underflow` error is returned.
+pub fn sub_assign_big<T>(nr0: &mut [T], nr1: &[T]) -> Result<usize>
 where T: Digit
 {
-    assert!(nr1.len() <= nr0.len());
-
-    let mut carry = false;
-    for (d0, &d1) in nr0.iter_mut().zip(nr1)
+    let n0 = nr0.len();
+    let n1 = nr1.len();
+    if n0 < n1
     {
-        carry = d0.sub_carry_assign(d1, carry);
+        Err(Error::Underflow)
     }
-
-    carry && dec_assign(&mut nr0[nr1.len()..])
+    else
+    {
+        let carry = nr0.iter_mut().zip(nr1).fold(false, |carry, (d0, &d1)| d0.sub_carry_assign(d1, carry));
+        if carry
+        {
+            let nd = dec_assign(&mut nr0[n1..])?;
+            Ok(n1 + nd)
+        }
+        else
+        {
+            Ok(drop_leading_zeros(nr0, n0))
+        }
+    }
 }
-
 
 /// Subtract the big numbers represented by the digits in `nr0` and `nr1`, and store the result in
 /// `diff`. Returns the number of digits in the differene, a `NoSpace` error if the difference
@@ -86,17 +119,14 @@ where T: Digit
         }
 
         diff[n1..n0].copy_from_slice(&nr0[n1..]);
-        if carry && dec_assign(&mut diff[n1..n0])
+        if carry
         {
-            Err(Error::Underflow)
+            let nd = dec_assign(&mut diff[n1..n0])?;
+            Ok(n1 + nd)
         }
         else
         {
-            let mut n = n0;
-            while n > 0 && diff[n-1].is_zero()
-            {
-                n -= 1;
-            }
+            let n = drop_leading_zeros(diff, n0);
             Ok(n)
         }
     }
@@ -111,13 +141,13 @@ where T: Digit
 {
     if crate::ubig::cmp::lt(&nr0[..len0], nr1)
     {
-        crate::ubig::rsub::rsub_assign_big(&mut nr0[..nr1.len()], nr1);
-        (true, crate::ubig::support::drop_leading_zeros(nr0, nr1.len()))
+        let nd = crate::ubig::rsub::rsub_assign_big(&mut nr0[..nr1.len()], nr1).unwrap();
+        (true, nd)
     }
     else
     {
-        crate::ubig::sub::sub_assign_big(&mut nr0[..len0], nr1);
-        (false, crate::ubig::support::drop_leading_zeros(nr0, len0))
+        let nd = crate::ubig::sub::sub_assign_big(&mut nr0[..len0], nr1).unwrap();
+        (false, nd)
     }
 }
 
@@ -148,256 +178,256 @@ mod tests
     fn test_dec_assign_binary()
     {
         let mut nr: [BinaryDigit<u8>; 0] = [];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, []);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [BinaryDigit(1u8)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(0));
 
         let mut nr = [BinaryDigit(0u8)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xff)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [BinaryDigit(0u8), BinaryDigit(1)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xff), BinaryDigit(0)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [BinaryDigit(0u8), BinaryDigit(1), BinaryDigit(3)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xff), BinaryDigit(0), BinaryDigit(3)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [BinaryDigit(0u8), BinaryDigit(0), BinaryDigit(3)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xff), BinaryDigit(0xff), BinaryDigit(2)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [BinaryDigit(0u8), BinaryDigit(0), BinaryDigit(0)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xff), BinaryDigit(0xff), BinaryDigit(0xff)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [BinaryDigit(0xffu32), BinaryDigit(0xff)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xfe), BinaryDigit(0xff)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr = [BinaryDigit(0u32), BinaryDigit(0xff)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xffffffff), BinaryDigit(0xfe)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr = [BinaryDigit(0xffu32), BinaryDigit(0xffffffff)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xfe), BinaryDigit(0xffffffff)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr = [BinaryDigit(0u32), BinaryDigit(0)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [BinaryDigit(0xffffffff), BinaryDigit(0xffffffff)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
     }
 
     #[test]
     fn test_dec_assign_decimal()
     {
         let mut nr: [DecimalDigit<u8>; 0] = [];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, []);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [DecimalDigit(1u8)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(0)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(0));
 
         let mut nr = [DecimalDigit(0u8)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(99)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [DecimalDigit(0u8), DecimalDigit(1)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(99), DecimalDigit(0)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [DecimalDigit(0u8), DecimalDigit(1), DecimalDigit(3)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(99), DecimalDigit(0), DecimalDigit(3)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [DecimalDigit(0u8), DecimalDigit(0), DecimalDigit(3)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(99), DecimalDigit(99), DecimalDigit(2)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [DecimalDigit(0u8), DecimalDigit(0), DecimalDigit(0)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(99), DecimalDigit(99), DecimalDigit(99)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [DecimalDigit(99u32), DecimalDigit(99)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(98), DecimalDigit(99)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr = [DecimalDigit(0u32), DecimalDigit(99)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(999_999_999), DecimalDigit(98)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr = [DecimalDigit(99u32), DecimalDigit(999_999_999)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(98), DecimalDigit(999_999_999)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr = [DecimalDigit(0u32), DecimalDigit(0)];
-        let underflow = dec_assign(&mut nr);
+        let res = dec_assign(&mut nr);
         assert_eq!(nr, [DecimalDigit(999_999_999), DecimalDigit(999_999_999)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
     }
 
     #[test]
     fn test_sub_assign_digit_binary()
     {
         let mut nr: [BinaryDigit<u8>; 0] = [];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0));
         assert_eq!(nr, []);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(0));
 
         let mut nr: [BinaryDigit<u8>; 0] = [];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(47));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(47));
         assert_eq!(nr, []);
-        assert_eq!(underflow, Some(BinaryDigit(47)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [BinaryDigit(1u8)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0));
         assert_eq!(nr, [BinaryDigit(1)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [BinaryDigit(48u8)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(47));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(47));
         assert_eq!(nr, [BinaryDigit(1)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [BinaryDigit(1u8)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0x7c)]);
-        assert_eq!(underflow, Some(BinaryDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [BinaryDigit(0x80u8), BinaryDigit(1)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0xfb), BinaryDigit(0)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [BinaryDigit(0x80u8), BinaryDigit(0), BinaryDigit(0xfe)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0xfb), BinaryDigit(0xff), BinaryDigit(0xfd)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [BinaryDigit(0x80u8), BinaryDigit(0), BinaryDigit(0)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0xfb), BinaryDigit(0xff), BinaryDigit(0xff)]);
-        assert_eq!(underflow, Some(BinaryDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [BinaryDigit(0x105u16), BinaryDigit(0xff), BinaryDigit(0xff)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0x80), BinaryDigit(0xff), BinaryDigit(0xff)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [BinaryDigit(5u16), BinaryDigit(0), BinaryDigit(0)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0xff80), BinaryDigit(0xffff), BinaryDigit(0xffff)]);
-        assert_eq!(underflow, Some(BinaryDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [BinaryDigit(0x105u32), BinaryDigit(0xff), BinaryDigit(0xff)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0x80), BinaryDigit(0xff), BinaryDigit(0xff)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [BinaryDigit(5u32), BinaryDigit(0xffff), BinaryDigit(0xffff)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0xffffff80), BinaryDigit(0xfffe), BinaryDigit(0xffff)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [BinaryDigit(5), BinaryDigit(0), BinaryDigit(0)];
-        let underflow = sub_assign_digit(&mut nr, BinaryDigit(0x85));
+        let res = sub_assign_digit(&mut nr, BinaryDigit(0x85));
         assert_eq!(nr, [BinaryDigit(0xffffff80u32), BinaryDigit(0xffffffff), BinaryDigit(0xffffffff)]);
-        assert_eq!(underflow, Some(BinaryDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
     }
 
     #[test]
     fn test_sub_assign_digit_decimal()
     {
         let mut nr: [DecimalDigit<u8>; 0] = [];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(0));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(0));
         assert_eq!(nr, []);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(0));
 
         let mut nr: [DecimalDigit<u8>; 0] = [];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(47));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(47));
         assert_eq!(nr, []);
-        assert_eq!(underflow, Some(DecimalDigit(47)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [DecimalDigit(1u8)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(0));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(0));
         assert_eq!(nr, [DecimalDigit(1)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [DecimalDigit(48u8)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(47));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(47));
         assert_eq!(nr, [DecimalDigit(1)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [DecimalDigit(5u8)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(50)]);
-        assert_eq!(underflow, Some(DecimalDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [DecimalDigit(5u8), DecimalDigit(1)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(50), DecimalDigit(0)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(1));
 
         let mut nr = [DecimalDigit(5u8), DecimalDigit(0), DecimalDigit(99)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(50), DecimalDigit(99), DecimalDigit(98)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [DecimalDigit(5u8), DecimalDigit(0), DecimalDigit(0)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(50), DecimalDigit(99), DecimalDigit(99)]);
-        assert_eq!(underflow, Some(DecimalDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [DecimalDigit(105u16), DecimalDigit(99), DecimalDigit(99)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(50), DecimalDigit(99), DecimalDigit(99)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [DecimalDigit(5u16), DecimalDigit(0), DecimalDigit(0)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(9_950), DecimalDigit(9_999), DecimalDigit(9_999)]);
-        assert_eq!(underflow, Some(DecimalDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr = [DecimalDigit(105u32), DecimalDigit(99), DecimalDigit(99)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(50), DecimalDigit(99), DecimalDigit(99)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [DecimalDigit(5u32), DecimalDigit(10_000), DecimalDigit(9_999)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(999_999_950), DecimalDigit(9_999), DecimalDigit(9_999)]);
-        assert_eq!(underflow, None);
+        assert_eq!(res, Ok(3));
 
         let mut nr = [DecimalDigit(5), DecimalDigit(0), DecimalDigit(0)];
-        let underflow = sub_assign_digit(&mut nr, DecimalDigit(55));
+        let res = sub_assign_digit(&mut nr, DecimalDigit(55));
         assert_eq!(nr, [DecimalDigit(999_999_950u32), DecimalDigit(999_999_999), DecimalDigit(999_999_999)]);
-        assert_eq!(underflow, Some(DecimalDigit(1)));
+        assert_eq!(res, Err(Error::Underflow));
     }
 
     #[test]
@@ -405,45 +435,45 @@ mod tests
     {
         let mut nr0 = [BinaryDigit(1u8)];
         let nr1 = [];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [BinaryDigit(1)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(1));
 
         let mut nr0 = [BinaryDigit(0xffu8)];
         let nr1 = [BinaryDigit(0xfeu8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [BinaryDigit(1)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(1));
 
         let mut nr0 = [BinaryDigit(0u8)];
         let nr1 = [BinaryDigit(0xffu8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [BinaryDigit(1)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr0 = [BinaryDigit(0x7fu8)];
         let nr1 = [BinaryDigit(0xffu8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [BinaryDigit(0x80)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr0 = [BinaryDigit(0x7fu8), BinaryDigit(2)];
         let nr1 = [BinaryDigit(0xffu8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [BinaryDigit(0x80), BinaryDigit(1)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr0 = [BinaryDigit(0x7fu8), BinaryDigit(0), BinaryDigit(0xff), BinaryDigit(0xff)];
         let nr1 = [BinaryDigit(0xffu8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [BinaryDigit(0x80), BinaryDigit(0xff), BinaryDigit(0xfe), BinaryDigit(0xff)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(4));
 
         let mut nr0 = [BinaryDigit(0x7fu8), BinaryDigit(0), BinaryDigit(0), BinaryDigit(0)];
         let nr1 = [BinaryDigit(0xffu8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [BinaryDigit(0x80), BinaryDigit(0xff), BinaryDigit(0xff), BinaryDigit(0xff)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
     }
 
     #[test]
@@ -451,45 +481,45 @@ mod tests
     {
         let mut nr0 = [DecimalDigit(1u8)];
         let nr1 = [];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(1)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(1));
 
         let mut nr0 = [DecimalDigit(99u8)];
         let nr1 = [DecimalDigit(98u8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(1)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(1));
 
         let mut nr0 = [DecimalDigit(0u8)];
         let nr1 = [DecimalDigit(99u8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(1)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr0 = [DecimalDigit(49u8)];
         let nr1 = [DecimalDigit(99u8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(50)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
 
         let mut nr0 = [DecimalDigit(49u8), DecimalDigit(2)];
         let nr1 = [DecimalDigit(99u8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(50), DecimalDigit(1)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(2));
 
         let mut nr0 = [DecimalDigit(49u8), DecimalDigit(0), DecimalDigit(99), DecimalDigit(99)];
         let nr1 = [DecimalDigit(99u8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(50), DecimalDigit(99), DecimalDigit(98), DecimalDigit(99)]);
-        assert!(!underflow);
+        assert_eq!(res, Ok(4));
 
         let mut nr0 = [DecimalDigit(49u8), DecimalDigit(0), DecimalDigit(0), DecimalDigit(0)];
         let nr1 = [DecimalDigit(99u8)];
-        let underflow = sub_assign_big(&mut nr0, &nr1);
+        let res = sub_assign_big(&mut nr0, &nr1);
         assert_eq!(nr0, [DecimalDigit(50), DecimalDigit(99), DecimalDigit(99), DecimalDigit(99)]);
-        assert!(underflow);
+        assert_eq!(res, Err(Error::Underflow));
     }
 
     #[test]

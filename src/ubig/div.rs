@@ -1,6 +1,12 @@
+mod bz;
+mod long;
+
 use crate::digit::Digit;
 use crate::result::{Error, Result};
 use crate::ubig::support::drop_leading_zeros;
+
+/// Minimum number of digits in denominator for using Burnikel-Ziegler division
+const BZ_CUTOFF: usize = 20;
 
 /// Calculate the remainder after dividing the number or number part represented by the digits in
 /// `nr` by the single digit `fac`. If `fac` is zero, a `DivisionByZero` error is returned.
@@ -110,8 +116,11 @@ where T: Digit
                     *digit = quot;
                 }
 
-                let carry = rem_high.shr_carry_assign(shift, T::zero());
-                rem_low.shr_carry_assign(shift, carry);
+                if shift > 0
+                {
+                    let carry = rem_high.shr_carry_assign(shift, T::zero());
+                    rem_low.shr_carry_assign(shift, carry);
+                }
                 let nquot = drop_leading_zeros(nr, n);
 
                 Ok((nquot, rem_low, rem_high))
@@ -127,15 +136,30 @@ where T: Digit
 pub fn div_big<T>(num: &mut [T], den: &[T], quot: &mut[T]) -> Result<(usize, usize)>
 where T: Digit
 {
-    div_big_long(num, den, quot)
+    let nden = den.len();
+
+    if nden <= 2 || crate::ubig::cmp::lt(num, den)
+    {
+        div_big_with_work(num, den, quot, &mut [])
+    }
+    else if nden < BZ_CUTOFF
+    {
+        let mut work = [T::zero(); BZ_CUTOFF];
+        div_big_with_work(num, den, quot, &mut work)
+    }
+    else
+    {
+        let nwork = bz::calc_div_bz_work_size(nden);
+        let mut work = vec![T::zero(); nwork];
+        div_big_with_work(num, den, quot, &mut work)
+    }
 }
 
-/// Divide the number or number part `num` by `den` using "schoolbook" long division, and store
-/// the quotient in `quot`, keeping the remainder in `num`. If `den` is zero, a `DivisionByZero`
-/// error is returned. If `quot` is not large enough to hold the quotient, a `NoSpace` error is
-/// returned. On success, returns the number of digits in the quotient and the remainder,
-/// respectively.
-fn div_big_long<T>(num: &mut [T], den: &[T], quot: &mut[T]) -> Result<(usize, usize)>
+/// Divide the number or number part `num` by `den`, and store the quotient in `quot`, keeping
+/// the remainder in `num`. If `den` is zero, a `DivisionByZero` error is returned. If `quot`
+/// is not large enough to hold the quotient, a `NoSpace` error is returned. On success, returns
+/// the number of digits in the quotient and the remainder, respectively.
+pub fn div_big_with_work<T>(num: &mut [T], den: &[T], quot: &mut[T], work: &mut [T]) -> Result<(usize, usize)>
 where T: Digit
 {
     let nnum = num.len();
@@ -150,87 +174,72 @@ where T: Digit
         Ok((0, num.len()))
     }
     else if quot.len() < nnum - nden + 1
+        && (quot.len() < nnum - nden || !crate::ubig::cmp::lt(&num[nnum-nden..], den))
     {
         Err(Error::NoSpace)
     }
     else if nden == 1
     {
         let (nquot, rem) = div_assign_digit(num, den[0])?;
-        quot[..nquot].copy_from_slice(&num[..nquot]);
-        if rem.is_zero()
+        if nquot > quot.len()
         {
-            Ok((nquot, 0))
+            Err(Error::NoSpace)
         }
         else
         {
-            num[0] = rem;
-            Ok((nquot, 1))
-        }
-    }
-    else if nden == 2
-    {
-        let (nquot, rem_low, rem_high) = div_assign_digit_pair(num, den[0], den[1])?;
-        quot[..nquot].copy_from_slice(&num[..nquot]);
-        if rem_high.is_zero()
-        {
-            if rem_low.is_zero()
+            quot[..nquot].copy_from_slice(&num[..nquot]);
+            num.fill(T::zero());
+            if rem.is_zero()
             {
                 Ok((nquot, 0))
             }
             else
             {
-                num[0] = rem_low;
+                num[0] = rem;
                 Ok((nquot, 1))
             }
         }
+    }
+    else if nden == 2
+    {
+        let (nquot, rem_low, rem_high) = div_assign_digit_pair(num, den[0], den[1])?;
+        if nquot > quot.len()
+        {
+            Err(Error::NoSpace)
+        }
         else
         {
-            num[0] = rem_low;
-            num[1] = rem_high;
-            Ok((nquot, 2))
+            quot[..nquot].copy_from_slice(&num[..nquot]);
+            num.fill(T::zero());
+            if rem_high.is_zero()
+            {
+                if rem_low.is_zero()
+                {
+                    Ok((nquot, 0))
+                }
+                else
+                {
+                    num[0] = rem_low;
+                    Ok((nquot, 1))
+                }
+            }
+            else
+            {
+                num[0] = rem_low;
+                num[1] = rem_high;
+                Ok((nquot, 2))
+            }
         }
+    }
+    else if nden < BZ_CUTOFF
+    {
+        debug_assert!(work.len() >= long::calc_div_long_work_size(nden), "Insufficient work space");
+        Ok(long::div_big_long(num, den, quot, work))
     }
     else
     {
-        let shift = den[nden-1].max_shift() as usize;
-        let mut scaled_den = den.to_vec();
-        crate::ubig::shl::shl_carry_assign_within_digit(&mut scaled_den, shift, T::zero());
-        let msd = scaled_den[nden-1];
-        let mut carry = crate::ubig::shl::shl_carry_assign_within_digit(num, shift, T::zero());
-        let mut qden = vec![T::zero(); nden+1];
-
-        for iq in (0..nnum-nden+1).rev()
-        {
-            let mut q = num[iq+nden-1];
-            q.div_carry_assign(msd, carry);
-            if !q.is_zero()
-            {
-                qden[..nden].copy_from_slice(&scaled_den);
-                qden[nden] = crate::ubig::mul::mul_add_assign_digit(&mut qden[..nden], q, T::zero());
-                if qden[nden] > carry
-                    || (qden[nden] == carry && crate::ubig::cmp::lt(&num[iq..iq+nden], &qden[..nden]))
-                {
-                    q.dec();
-                    crate::ubig::sub::sub_assign_big(&mut qden, &scaled_den);
-                    if qden[nden] > carry
-                        || (qden[nden] == carry && crate::ubig::cmp::lt(&num[iq..iq+nden], &qden[..nden]))
-                    {
-                        q.dec();
-                        crate::ubig::sub::sub_assign_big(&mut qden, &scaled_den);
-                    }
-                }
-
-                crate::ubig::sub::sub_assign_big(&mut num[iq..iq+nden], &qden[..nden]);
-            }
-
-            quot[iq] = q;
-            carry = num[iq+nden-1];
-        }
-
-        let nquot = drop_leading_zeros(quot, nnum-nden+1);
-        let (nrem, _) = crate::ubig::shr::shr_carry_assign_within_digit(&mut num[..nden], shift, T::zero());
-
-        Ok((nquot, nrem))
+        debug_assert!(work.len() >= bz::calc_div_bz_work_size(nden), "Insufficient work space");
+        Ok(bz::div_big_bz(num, den, quot, work))
     }
 }
 
@@ -543,6 +552,13 @@ mod tests
         assert_eq!(nquot, 3);
         assert_eq!(rem_low, DecimalDigit(575_476_269));
         assert_eq!(rem_high, DecimalDigit(80_183_613));
+
+        let mut n = [DecimalDigit(17_u8), DecimalDigit(29), DecimalDigit(98)];
+        let (nquot, rem_low, rem_high) = div_assign_digit_pair(&mut n, DecimalDigit(93), DecimalDigit(93)).unwrap();
+        assert_eq!(n, [DecimalDigit(4), DecimalDigit(1), DecimalDigit(0)]);
+        assert_eq!(nquot, 2);
+        assert_eq!(rem_low, DecimalDigit(45));
+        assert_eq!(rem_high, DecimalDigit(60));
     }
 
     #[test]
@@ -558,33 +574,90 @@ mod tests
     }
 
     #[test]
-    fn test_div_big_long_binary()
+    fn test_div_big_den_gt_num()
     {
         let mut num: [BinaryDigit<u8>; 0] = [];
         let den = [BinaryDigit(0x53), BinaryDigit(0x12), BinaryDigit(0x91)];
         let mut quot = [BinaryDigit::zero(); 0];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
+        let (nquot, nrem) = div_big(&mut num, &den, &mut quot).unwrap();
         assert_eq!(nquot, 0);
         assert_eq!(nrem, 0);
         assert_eq!(quot, []);
         assert_eq!(num, []);
 
         let mut num = [
-            BinaryDigit(0x43u8),
-            BinaryDigit(0x98),
-            BinaryDigit(0x12),
-            BinaryDigit(0xfe),
-            BinaryDigit(0xf2),
-            BinaryDigit(0x43)
+            BinaryDigit(0x67347fff71ff453d_u64),
+            BinaryDigit(0x671200092314d4ff),
         ];
-        let den = [BinaryDigit(0x53u8), BinaryDigit(0x12), BinaryDigit(0x91)];
-        let mut quot = [BinaryDigit::zero(); 4];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 3);
-        assert_eq!(nrem, 3);
-        assert_eq!(quot, [BinaryDigit(0x01), BinaryDigit(0xe8), BinaryDigit(0x77), BinaryDigit(0)]);
-        assert_eq!(num[..nrem], [BinaryDigit(0xf0), BinaryDigit(0x4d), BinaryDigit(0x51)]);
+        let den = [BinaryDigit(0xf5df399f64736df5), BinaryDigit(0x1234567879f73882), BinaryDigit(0x63726fff)];
+        let mut quot = [BinaryDigit::zero(); 3];
+        let (nquot, nrem) = div_big(&mut num, &den, &mut quot).unwrap();
+        assert_eq!(nquot, 0);
+        assert_eq!(nrem, 2);
+        assert_eq!(quot, [BinaryDigit(0), BinaryDigit(0), BinaryDigit(0)]);
+        assert_eq!(num[..nrem], [BinaryDigit(0x67347fff71ff453d), BinaryDigit(0x671200092314d4ff)]);
 
+        let mut num: [DecimalDigit<u8>; 0] = [];
+        let den = [DecimalDigit(53), DecimalDigit(12), DecimalDigit(91)];
+        let mut quot = [DecimalDigit::zero(); 0];
+        let (nquot, nrem) = div_big(&mut num, &den, &mut quot).unwrap();
+        assert_eq!(nquot, 0);
+        assert_eq!(nrem, 0);
+        assert_eq!(quot, []);
+        assert_eq!(num, []);
+
+        let mut num = [
+            DecimalDigit(2_827_928_982_748_837_756_u64),
+            DecimalDigit(9_987_857_888_374_321_333),
+        ];
+        let den = [
+            DecimalDigit(3_464_444_454_444_454_777),
+            DecimalDigit(9_399_999_474_765_588_888),
+            DecimalDigit(867_984_998_999_572_288)
+        ];
+        let mut quot = [DecimalDigit::zero(); 3];
+        let (nquot, nrem) = div_big(&mut num, &den, &mut quot).unwrap();
+        assert_eq!(nquot, 0);
+        assert_eq!(nrem, 2);
+        assert_eq!(quot, [DecimalDigit(0), DecimalDigit(0), DecimalDigit(0)]);
+        assert_eq!(num[..nrem], [DecimalDigit(2_827_928_982_748_837_756), DecimalDigit(9_987_857_888_374_321_333)]);
+   }
+
+    #[test]
+    fn test_div_big_zero()
+    {
+        let mut num = [BinaryDigit(0x01u8), BinaryDigit(0x02), BinaryDigit(0x03)];
+        let den: [BinaryDigit<u8>; 0] = [];
+        let mut quot = [BinaryDigit(0); 4];
+        let res = div_big(&mut num, &den, &mut quot);
+        assert_eq!(res, Err(Error::DivisionByZero));
+
+        let mut num = [DecimalDigit(1u64), DecimalDigit(2), DecimalDigit(3)];
+        let den: [DecimalDigit<u64>; 0] = [];
+        let mut quot = [DecimalDigit(0); 4];
+        let res = div_big(&mut num, &den, &mut quot);
+        assert_eq!(res, Err(Error::DivisionByZero));
+    }
+
+    #[test]
+    fn test_div_big_no_space()
+    {
+        let mut num = [BinaryDigit(0x01u8), BinaryDigit(0x02), BinaryDigit(0x03), BinaryDigit(0x04), BinaryDigit(0x05)];
+        let den = [BinaryDigit(0x01u8), BinaryDigit(0x02), BinaryDigit(0x03)];
+        let mut quot = [BinaryDigit(0); 2];
+        let res = div_big(&mut num, &den, &mut quot);
+        assert_eq!(res, Err(Error::NoSpace));
+
+        let mut num = [DecimalDigit(1u64), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4), DecimalDigit(5)];
+        let den = [DecimalDigit(1u64), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)];
+        let mut quot = [DecimalDigit(0); 1];
+        let res = div_big(&mut num, &den, &mut quot);
+        assert_eq!(res, Err(Error::NoSpace));
+    }
+
+    #[test]
+    fn test_div_big_two_digits()
+    {
         let mut num = [
             BinaryDigit(0x6734_u16),
             BinaryDigit(0x6712),
@@ -594,100 +667,11 @@ mod tests
         ];
         let den = [BinaryDigit(0x7df3), BinaryDigit(0x0123)];
         let mut quot = [BinaryDigit::zero(); 4];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
+        let (nquot, nrem) = div_big(&mut num, &den, &mut quot).unwrap();
         assert_eq!(nquot, 4);
         assert_eq!(nrem, 2);
         assert_eq!(quot, [BinaryDigit(0x204d), BinaryDigit(0xb324), BinaryDigit(0x218e), BinaryDigit(0x59)]);
         assert_eq!(num[..nrem], [BinaryDigit(0x251d), BinaryDigit(0x7b)]);
-
-        let mut num = [
-            BinaryDigit(0x67347fff_u32),
-            BinaryDigit(0x67120009),
-            BinaryDigit(0x29fd47fd),
-            BinaryDigit(0xff33ff33),
-            BinaryDigit(0x657cc982)
-        ];
-        let den = [BinaryDigit(0x79ff5df3), BinaryDigit(0x12345678), BinaryDigit(0x63726fff)];
-        let mut quot = [BinaryDigit::zero(); 3];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 3);
-        assert_eq!(nrem, 3);
-        assert_eq!(quot, [BinaryDigit(0xc86d03d2), BinaryDigit(0x0540a699), BinaryDigit(0x01)]);
-        assert_eq!(num[..nrem], [BinaryDigit(0x7d2895a9), BinaryDigit(0x2e397c6b), BinaryDigit(0x05201ff6)]);
-
-        let mut num = [
-            BinaryDigit(0x67347fff71ff453d_u64),
-            BinaryDigit(0x671200092314d4ff),
-        ];
-        let den = [BinaryDigit(0xf5df399f64736df5), BinaryDigit(0x1234567879f73882), BinaryDigit(0x63726fff)];
-        let mut quot = [BinaryDigit::zero(); 3];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 0);
-        assert_eq!(nrem, 2);
-        assert_eq!(quot, [BinaryDigit(0), BinaryDigit(0), BinaryDigit(0)]);
-        assert_eq!(num[..nrem], [BinaryDigit(0x67347fff71ff453d), BinaryDigit(0x671200092314d4ff)]);
-
-        let mut num = [
-            BinaryDigit(0x67347fff71ff453d_u64),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff),
-            BinaryDigit(0x671200092314d4ff)
-        ];
-        let den = [BinaryDigit(0xf5df399f64736df5), BinaryDigit(0x1234567879f73882), BinaryDigit(0x63726fff)];
-        let mut quot = [BinaryDigit::zero(); 8];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 8);
-        assert_eq!(nrem, 3);
-        assert_eq!(quot, [
-            BinaryDigit(0x27f8b7e7788703ea),
-            BinaryDigit(0x3b5e4d976379c4f3),
-            BinaryDigit(0x1717b5f7323cc94d),
-            BinaryDigit(0x5de408c5942c0da8),
-            BinaryDigit(0x04f1f91c8cb7ccb0),
-            BinaryDigit(0x864896085c32ab49),
-            BinaryDigit(0xc4941a9bd6f3e486),
-            BinaryDigit(0x010953c3a3)
-        ]);
-        assert_eq!(num[..nrem], [
-            BinaryDigit(0xf13e86a371ffe44b),
-            BinaryDigit(0x9f6724dd963e8fea),
-            BinaryDigit(0x5fb91280)
-        ]);
-    }
-
-    #[test]
-    fn test_div_big_long_decimal()
-    {
-        let mut num: [DecimalDigit<u8>; 0] = [];
-        let den = [DecimalDigit(53), DecimalDigit(12), DecimalDigit(91)];
-        let mut quot = [DecimalDigit::zero(); 0];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 0);
-        assert_eq!(nrem, 0);
-        assert_eq!(quot, []);
-        assert_eq!(num, []);
-
-        let mut num = [
-            DecimalDigit(43u8),
-            DecimalDigit(98),
-            DecimalDigit(12),
-            DecimalDigit(98),
-            DecimalDigit(92),
-            DecimalDigit(43)
-        ];
-        let den = [DecimalDigit(53u8), DecimalDigit(12), DecimalDigit(91)];
-        let mut quot = [DecimalDigit::zero(); 4];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 3);
-        assert_eq!(nrem, 3);
-        assert_eq!(quot, [DecimalDigit(81), DecimalDigit(20), DecimalDigit(48), DecimalDigit(0)]);
-        assert_eq!(num[..nrem], [DecimalDigit(50), DecimalDigit(23), DecimalDigit(37)]);
 
         let mut num = [
             DecimalDigit(4_453_u16),
@@ -698,116 +682,10 @@ mod tests
         ];
         let den = [DecimalDigit(3_756), DecimalDigit(123)];
         let mut quot = [DecimalDigit::zero(); 4];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
+        let (nquot, nrem) = div_big(&mut num, &den, &mut quot).unwrap();
         assert_eq!(nquot, 4);
         assert_eq!(nrem, 2);
         assert_eq!(quot, [DecimalDigit(6_267), DecimalDigit(9_489), DecimalDigit(7_506), DecimalDigit(54)]);
         assert_eq!(num[..nrem], [DecimalDigit(5_601), DecimalDigit(6)]);
-
-        let mut num = [
-            DecimalDigit(736_877_958_u32),
-            DecimalDigit(473_222_398),
-            DecimalDigit(123_987_987),
-            DecimalDigit(857_833_398),
-            DecimalDigit(12_345)
-        ];
-        let den = [DecimalDigit(847_928_000), DecimalDigit(340_987_987), DecimalDigit(345_756_986)];
-        let mut quot = [DecimalDigit::zero(); 3];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 2);
-        assert_eq!(nrem, 3);
-        assert_eq!(quot, [DecimalDigit(748_731_383), DecimalDigit(35_706), DecimalDigit(0)]);
-        assert_eq!(num[..nrem], [DecimalDigit(612_453_958), DecimalDigit(628_288_073), DecimalDigit(241_893_843)]);
-
-        let mut num = [
-            DecimalDigit(2_827_928_982_748_837_756_u64),
-            DecimalDigit(9_987_857_888_374_321_333),
-        ];
-        let den = [
-            DecimalDigit(3_464_444_454_444_454_777),
-            DecimalDigit(9_399_999_474_765_588_888),
-            DecimalDigit(867_984_998_999_572_288)
-        ];
-        let mut quot = [DecimalDigit::zero(); 3];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 0);
-        assert_eq!(nrem, 2);
-        assert_eq!(quot, [DecimalDigit(0), DecimalDigit(0), DecimalDigit(0)]);
-        assert_eq!(num[..nrem], [DecimalDigit(2_827_928_982_748_837_756), DecimalDigit(9_987_857_888_374_321_333)]);
-
-        let mut num = [
-            DecimalDigit(2_827_928_982_748_837_756_u64),
-            DecimalDigit(9_987_857_888_374_321_333),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-            DecimalDigit(9_567_099_055_999_999_999),
-        ];
-        let den = [
-            DecimalDigit(3_464_444_454_444_454_777),
-            DecimalDigit(9_399_999_474_765_588_888),
-            DecimalDigit(867_984_998_999_572_288)
-        ];
-        let mut quot = [DecimalDigit::zero(); 11];
-        let (nquot, nrem) = div_big_long(&mut num, &den, &mut quot).unwrap();
-        assert_eq!(nquot, 11);
-        assert_eq!(nrem, 3);
-        assert_eq!(quot, [
-            DecimalDigit(2_739_132_595_692_916_609),
-            DecimalDigit(  186_009_061_497_178_731),
-            DecimalDigit(3_515_246_891_635_834_223),
-            DecimalDigit(1_016_137_553_008_377_404),
-            DecimalDigit(9_633_276_126_066_576_086),
-            DecimalDigit(4_265_899_626_824_713_455),
-            DecimalDigit(2_736_435_672_850_267_122),
-            DecimalDigit(3_717_274_131_184_765_525),
-            DecimalDigit(6_660_916_798_959_678_502),
-            DecimalDigit(  221_940_091_440_616_178),
-            DecimalDigit(                       11)
-        ]);
-        assert_eq!(num[..nrem], [
-            DecimalDigit(2_701_266_084_816_146_563),
-            DecimalDigit(3_684_527_600_083_895_574),
-            DecimalDigit(347_460_090_911_990_341)
-        ]);
-    }
-
-    #[test]
-    fn test_div_big_long_zero()
-    {
-        let mut num = [BinaryDigit(0x01u8), BinaryDigit(0x02), BinaryDigit(0x03)];
-        let den: [BinaryDigit<u8>; 0] = [];
-        let mut quot = [BinaryDigit(0); 4];
-        let res = div_big_long(&mut num, &den, &mut quot);
-        assert_eq!(res, Err(Error::DivisionByZero));
-
-        let mut num = [DecimalDigit(1u64), DecimalDigit(2), DecimalDigit(3)];
-        let den: [DecimalDigit<u64>; 0] = [];
-        let mut quot = [DecimalDigit(0); 4];
-        let res = div_big_long(&mut num, &den, &mut quot);
-        assert_eq!(res, Err(Error::DivisionByZero));
-    }
-
-    #[test]
-    fn test_div_big_no_space()
-    {
-        let mut num = [BinaryDigit(0x01u8), BinaryDigit(0x02), BinaryDigit(0x03), BinaryDigit(0x04), BinaryDigit(0x05)];
-        let den = [BinaryDigit(0x01u8), BinaryDigit(0x02), BinaryDigit(0x03)];
-        let mut quot = [BinaryDigit(0); 2];
-        let res = div_big_long(&mut num, &den, &mut quot);
-        assert_eq!(res, Err(Error::NoSpace));
-
-        let mut num = [DecimalDigit(1u64), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4), DecimalDigit(5)];
-        let den = [DecimalDigit(1u64), DecimalDigit(2), DecimalDigit(3), DecimalDigit(4)];
-        let mut quot = [DecimalDigit(0); 1];
-        let res = div_big_long(&mut num, &den, &mut quot);
-        assert_eq!(res, Err(Error::NoSpace));
     }
 }

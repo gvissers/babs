@@ -235,6 +235,11 @@ fn test_div_big_binary()
 #[test]
 fn test_div_big_decimal()
 {
+    let n = UBigDec8::from_str("900000").unwrap();
+    let m = UBigDec8::from_str("11000").unwrap();
+    let q = n / m;
+    assert_eq!(format!("{}", q), "81");
+
     let n = UBigDec8::from_str("9002219982873646582917").unwrap();
     let m = UBigDec8::from_str("937486293").unwrap();
     let q = n / m;

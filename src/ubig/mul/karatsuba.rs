@@ -67,8 +67,7 @@ where T: Digit
     }
     else if crate::ubig::cmp::lt(&z1[..nz1], &z0[..nz0])
     {
-        crate::ubig::rsub::rsub_assign_big(&mut z1[..nz0], &z0[..nz0]);
-        nz1 = drop_leading_zeros(z1, nz0).max(nz2);
+        nz1 = crate::ubig::rsub::rsub_assign_big(&mut z1[..nz0], &z0[..nz0]).unwrap().max(nz2);
         if crate::ubig::add::add_assign_big(&mut z1[..nz1], &z2[..nz2])
         {
             crate::ubig::add::inc_assign(&mut result[split+nz1..]);
@@ -76,11 +75,9 @@ where T: Digit
     }
     else
     {
-        crate::ubig::sub::sub_assign_big(z1, &z0[..nz0]);
-        nz1 = drop_leading_zeros(z1, nz1);
+        nz1 = crate::ubig::sub::sub_assign_big(&mut z1[..nz1], &z0[..nz0]).unwrap();
         debug_assert!(!crate::ubig::cmp::lt(&z2[..nz2], &z1[..nz1]), "z1 < 0");
-        crate::ubig::rsub::rsub_assign_big(&mut z1[..nz2], &z2[..nz2]);
-        nz1 = drop_leading_zeros(z1, nz2);
+        nz1 = crate::ubig::rsub::rsub_assign_big(&mut z1[..nz2], &z2[..nz2]).unwrap();
     }
 
     let carry = crate::ubig::add::add_assign_big(&mut result[split..], &z1[..nz1]);
@@ -119,8 +116,7 @@ where T: Digit
     // Now calculate z1 = 2*low0*high0
     if crate::ubig::cmp::lt(&z1[..nz1], &z0[..nz0])
     {
-        crate::ubig::rsub::rsub_assign_big(&mut z1[..nz0], &z0[..nz0]);
-        nz1 = drop_leading_zeros(z1, nz0).max(nz2);
+        nz1 = crate::ubig::rsub::rsub_assign_big(&mut z1[..nz0], &z0[..nz0]).unwrap().max(nz2);
         if crate::ubig::add::add_assign_big(&mut z1[..nz1], &z2[..nz2])
         {
             crate::ubig::add::inc_assign(&mut result[split+nz1..]);
@@ -128,11 +124,9 @@ where T: Digit
     }
     else
     {
-        crate::ubig::sub::sub_assign_big(z1, &z0[..nz0]);
-        nz1 = drop_leading_zeros(z1, nz1);
+        nz1 = crate::ubig::sub::sub_assign_big(&mut z1[..nz1], &z0[..nz0]).unwrap();
         debug_assert!(!crate::ubig::cmp::lt(&z2[..nz2], &z1[..nz1]), "z1 < 0");
-        crate::ubig::rsub::rsub_assign_big(&mut z1[..nz2], &z2[..nz2]);
-        nz1 = drop_leading_zeros(z1, nz2);
+        nz1 = crate::ubig::rsub::rsub_assign_big(&mut z1[..nz2], &z2[..nz2]).unwrap();
     }
 
     let carry = crate::ubig::add::add_assign_big(&mut result[split..], &z1[..nz1]);
