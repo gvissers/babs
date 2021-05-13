@@ -14,6 +14,10 @@ use crate::result::{Error, Result};
 use num_traits::{Zero, One};
 use std::fmt::Write;
 
+/// Minimum number size (in digits) for which the conversion from binary to decimal numbers uses
+/// division by powers of 10 instead of building up the result by shifting and adding
+const TO_DEC_DIV_CUTOFF: usize = 16;
+
 /// Structure describing a big number as a series of digits. The base of the number is determined
 /// by the digit type `T`. The digits are stored in little-endian order, i.e. the least significant
 /// digit is the first.
@@ -259,50 +263,63 @@ impl<T> UBig<BinaryDigit<T>>
 {
     /// Convert this binary big number to decimal form.
     pub fn to_decimal(&self) -> UBig<DecimalDigit<T>>
-    where T: DigitStorage, DecimalDigit<T>: Digit
+    where T: DigitStorage, BinaryDigit<T>: Digit, DecimalDigit<T>: Digit
     {
-        match self.nr_digits()
+        if self.nr_digits() < TO_DEC_DIV_CUTOFF
         {
-            0|1 => Self::build_decimal(&self.digits, &[]),
-            n   => {
-                let half_nr_bits = BinaryDigit::<T>::NR_BITS / 2;
-                let pow_max = 8 * std::mem::size_of::<usize>() as u32 - n.leading_zeros() - 1;
-                let mut scale = (UBig::one() << half_nr_bits) << half_nr_bits;
-                let mut scales = vec![];
-                for _ in 0..pow_max-1
-                {
-                    let scale_sq = scale.square();
-                    scales.push(scale);
-                    scale = scale_sq;
-                }
+            Self::build_decimal(&mut self.clone(), &[])
+        }
+        else
+        {
+            let tot_nr_dec = BinaryDigit::<T>::nr_decimal_places(self.nr_digits());
+            let mut scale = Self::from(T::DECIMAL_RADIX);
+            let mut scales = vec![];
+            let mut nr_dec = DecimalDigit::<T>::NR_DECIMAL_PLACES;
+            while 3*nr_dec < tot_nr_dec
+            {
+                let scale_sq = scale.square();
                 scales.push(scale);
-                Self::build_decimal(&self.digits, &scales)
+                scale = scale_sq;
+                nr_dec *= 2;
             }
+            scales.push(scale);
+            self.clone().build_decimal(&scales)
         }
     }
 
     /// Convert the binary big number represented by digits `digits` to decimal form. Array
     /// `scales` contains successive squares of the radix of the binary number, expressed in
     /// decimal digits.
-    fn build_decimal(digits: &[BinaryDigit<T>], scales: &[UBig<DecimalDigit<T>>]) -> UBig<DecimalDigit<T>>
-    where T: DigitStorage, DecimalDigit<T>: Digit
+    fn build_decimal(&mut self, scales: &[UBig<BinaryDigit<T>>]) -> UBig<DecimalDigit<T>>
+    where T: DigitStorage, BinaryDigit<T>: Digit, DecimalDigit<T>: Digit
     {
-        match digits.len()
+        match self.nr_digits()
         {
             0 => UBig::zero(),
-            1 => UBig::<DecimalDigit<T>>::from(digits[0].0),
-            n => {
-                let mut pow_idx = 8 * std::mem::size_of::<usize>() - n.leading_zeros() as usize - 2;
-                let mut split = 1 << pow_idx;
-                if 3*split > 2*n
+            n if n < TO_DEC_DIV_CUTOFF => {
+                let mut res = UBig::<DecimalDigit<T>>::from(self.digits[n-1].0);
+                for d in self.digits[..n-1].iter().rev()
                 {
-                    pow_idx -= 1;
-                    split >>= 1;
+                    res <<= BinaryDigit::<T>::NR_BITS / 2;
+                    res <<= BinaryDigit::<T>::NR_BITS / 2;
+                    res += d.0;
                 }
-                let nlow = support::drop_leading_zeros(digits, split);
-                let low = Self::build_decimal(&digits[..nlow], scales);
-                let high = Self::build_decimal(&digits[split..], scales);
-                high * &scales[pow_idx] + low
+                res
+            }
+            n => {
+                let tot_nr_dec = BinaryDigit::<T>::nr_decimal_places(n);
+                let mut idx = 0;
+                let mut nr_dec = DecimalDigit::<T>::NR_DECIMAL_PLACES;
+                while 3*nr_dec < tot_nr_dec
+                {
+                    idx += 1;
+                    nr_dec *= 2;
+                }
+                let mut low = self.div_assign_big(&scales[idx]).unwrap();
+                let mut res = low.build_decimal(scales);
+                let high_dec = self.build_decimal(scales);
+                res.digits.extend(high_dec.digits);
+                res
             }
         }
     }
@@ -486,7 +503,7 @@ where T: DigitStorage + std::fmt::UpperHex
 }
 
 impl<T> std::fmt::Display for UBig<BinaryDigit<T>>
-where T: DigitStorage + std::fmt::Display, DecimalDigit<T>: Digit
+where T: DigitStorage + std::fmt::Display, BinaryDigit<T>: Digit, DecimalDigit<T>: Digit
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
     {
