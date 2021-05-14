@@ -33,16 +33,10 @@ where T: Digit
     let shift = sden[n-1].max_shift();
     crate::ubig::shl::shl_carry_assign_within_digit(&mut sden, shift as usize, T::zero());
 
-    let mut snum = vec![T::zero(); nnum+n-nden+1];
+    let t = 2 + (nnum-nden) / n;
+    let mut snum = vec![T::zero(); t*n];
     snum[n-nden..n-nden+nnum].copy_from_slice(num);
-    crate::ubig::shl::shl_carry_assign_within_digit(&mut snum[n-nden..], shift as usize, T::zero());
-
-    let mut t = (snum.len() + n-1) / n;
-    if t * n == snum.len() && snum[snum.len()-1].max_shift() == 0
-    {
-        t += 1;
-    }
-    snum.resize(t*n, T::zero());
+    crate::ubig::shl::shl_carry_assign_within_digit(&mut snum[n-nden..n-nden+nnum+1], shift as usize, T::zero());
 
     let mut q = vec![T::zero(); (t-1)*n];
     for i in (0..t-1).rev()
