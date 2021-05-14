@@ -335,7 +335,7 @@ impl Digit for BinaryDigit<u64>
     {
         let mask = (1 << (shift - 1)) | ((1 << (shift - 1)) - 1);
         let new_carry = self.0 & mask;
-        self.0 = (carry.0 << Self::NR_BITS - shift) | (self.0 >> shift);
+        self.0 = (carry.0 << (Self::NR_BITS - shift)) | (self.0 >> shift);
         BinaryDigit(new_carry)
     }
 

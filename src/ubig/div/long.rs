@@ -39,7 +39,7 @@ where T: Digit
         crate::ubig::shl::shl_carry_assign_within_digit(&mut scaled_den, shift, T::zero());
         let num_msd = crate::ubig::shl::shl_carry_assign_within_digit(num, shift, T::zero());
         let qden = &mut work[..nden+1];
-        let (nquot, nrem) = div_big_long_scaled(num, num_msd, &mut scaled_den, quot, qden);
+        let (nquot, nrem) = div_big_long_scaled(num, num_msd, &scaled_den, quot, qden);
         let (nrem, _) = crate::ubig::shr::shr_carry_assign_within_digit(&mut num[..nrem], shift, T::zero());
         (nquot, nrem)
     }

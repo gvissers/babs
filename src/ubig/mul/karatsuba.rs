@@ -101,7 +101,7 @@ where T: Digit
     let split = (n0 + 1) / 2;
     let nlow0 = drop_leading_zeros(nr0, split);
 
-    let diff0 = &mut result[..];
+    let diff0 = &mut *result;
     let (_, ndiff0) = crate::ubig::sub::sub_big_into_abs_sign(&nr0[..nlow0], &nr0[split..], diff0);
 
     let (z1, new_work) = work.split_at_mut(2*split);
