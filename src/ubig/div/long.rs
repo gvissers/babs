@@ -58,25 +58,23 @@ where T: Digit
 
     // Handle first digit separately, since if it's zero, we need one less digit in `quot` and
     // don't store it. This is mostly useful for the BZ division.
-    let mut carry = num_msd;
     let mut nquot = nnum - nden + 1;
     let mut q = num[nnum-1];
-    q.div_carry_assign(msd, carry);
+    q.div_carry_assign(msd, num_msd);
     if q.is_zero()
     {
         nquot -= 1;
     }
     else
     {
-        qden[..nden].copy_from_slice(&den);
-        qden[nden] = crate::ubig::mul::mul_add_assign_digit(&mut qden[..nden], q, T::zero());
-        if qden[nden] > carry
-            || (qden[nden] == carry && crate::ubig::cmp::lt(&num[nnum-nden..], &qden[..nden]))
+        crate::ubig::mul::mul_digit_into(den, q, qden);
+        if qden[nden] > num_msd
+            || (qden[nden] == num_msd && crate::ubig::cmp::lt(&num[nnum-nden..], &qden[..nden]))
         {
             q.dec();
             let _ = crate::ubig::sub::sub_assign_big(qden, &den);
-            if qden[nden] > carry
-                || (qden[nden] == carry && crate::ubig::cmp::lt(&num[nnum-nden..], &qden[..nden]))
+            if qden[nden] > num_msd
+                || (qden[nden] == num_msd && crate::ubig::cmp::lt(&num[nnum-nden..], &qden[..nden]))
             {
                 q.dec();
                 let _ = crate::ubig::sub::sub_assign_big(qden, &den);
@@ -88,22 +86,18 @@ where T: Digit
     }
 
     // Now handle the other digits
-    carry = num[nnum-1];
     for iq in (0..nnum-nden).rev()
     {
         q = num[iq+nden-1];
-        q.div_carry_assign(msd, carry);
+        q.div_carry_assign(msd, num[iq+nden]);
         if !q.is_zero()
         {
-            qden[..nden].copy_from_slice(&den);
-            qden[nden] = crate::ubig::mul::mul_add_assign_digit(&mut qden[..nden], q, T::zero());
-            if qden[nden] > carry
-                || (qden[nden] == carry && crate::ubig::cmp::lt(&num[iq..iq+nden], &qden[..nden]))
+            crate::ubig::mul::mul_digit_into(den, q, qden);
+            if crate::ubig::cmp::lt(&num[iq..iq+nden+1], qden)
             {
                 q.dec();
                 let _ = crate::ubig::sub::sub_assign_big(qden, &den);
-                if qden[nden] > carry
-                    || (qden[nden] == carry && crate::ubig::cmp::lt(&num[iq..iq+nden], &qden[..nden]))
+                if crate::ubig::cmp::lt(&num[iq..iq+nden+1], qden)
                 {
                     q.dec();
                     let _ = crate::ubig::sub::sub_assign_big(qden, &den);
@@ -114,7 +108,6 @@ where T: Digit
         }
 
         quot[iq] = q;
-        carry = num[iq+nden-1];
     }
 
     nquot = drop_leading_zeros(quot, nquot);

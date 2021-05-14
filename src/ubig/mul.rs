@@ -26,6 +26,19 @@ where T: Digit
     nr.iter_mut().fold(off, |carry, d| d.mul_carry_assign(fac, carry))
 }
 
+/// Multiply the number or number part represented by the digits in `nr` by the single digit `fac`,
+/// and store the result in `product`. The length of `product` must be at least one more then that
+/// of `nr`.
+pub fn mul_digit_into<T>(nr: &[T], fac: T, product: &mut [T])
+where T: Digit
+{
+    let nd = nr.len();
+    debug_assert!(product.len() >= nd+1);
+    product[nd] = nr.iter()
+        .zip(product.iter_mut())
+        .fold(T::zero(), |carry, (&d, pd)| {*pd = d; pd.mul_carry_assign(fac, carry) });
+}
+
 /// Multiply the number or number part represented by the digits in `nr` by the two-digit number
 /// `fac_low + b*fac_high`, where `b` is the base of the number, and add `offset` to it. Return
 /// the carry digits.
@@ -421,6 +434,142 @@ mod tests
         let carry = mul_add_assign_digit(&mut nr, DecimalDigit(2_987), DecimalDigit(321_563_982));
         assert_eq!(nr, [DecimalDigit(413_310_383), DecimalDigit(964_155_623), DecimalDigit(12_844_099)]);
         assert_eq!(carry, DecimalDigit(0));
+    }
+
+    #[test]
+    fn test_mul_digit_into_binary()
+    {
+        let nr: [BinaryDigit<u8>; 0] = [];
+        let mut product = [BinaryDigit(0u8); 1];
+        mul_digit_into(&nr, BinaryDigit(0x57), &mut product);
+        assert_eq!(product, [BinaryDigit(0)]);
+
+        let nr = [BinaryDigit(0xff_u8), BinaryDigit(0x61), BinaryDigit(0xa7)];
+        let mut product = [BinaryDigit(0u8); 4];
+        mul_digit_into(&nr, BinaryDigit(0x57), &mut product);
+        assert_eq!(product, [BinaryDigit(0xa9), BinaryDigit(0x4d), BinaryDigit(0xe2), BinaryDigit(0x38)]);
+
+        let nr = [BinaryDigit(0xf3_u8), BinaryDigit(0xa7), BinaryDigit(0x50)];
+        let mut product = [BinaryDigit(0u8); 4];
+        mul_digit_into(&nr, BinaryDigit(0x03), &mut product);
+        assert_eq!(product, [BinaryDigit(0xd9), BinaryDigit(0xf7), BinaryDigit(0xf1), BinaryDigit(0)]);
+
+        let nr: [BinaryDigit<u16>; 0] = [];
+        let mut product = [BinaryDigit(0u16); 1];
+        mul_digit_into(&nr, BinaryDigit(0xa57f), &mut product);
+        assert_eq!(product, [BinaryDigit(0)]);
+
+        let nr = [BinaryDigit(0xffe3_u16), BinaryDigit(0x619a), BinaryDigit(0xa7ff)];
+        let mut product = [BinaryDigit(0u16); 4];
+        mul_digit_into(&nr, BinaryDigit(0xa57f), &mut product);
+        assert_eq!(product, [BinaryDigit(0x409d), BinaryDigit(0x52d2), BinaryDigit(0xf19a), BinaryDigit(0x6c9a)]);
+
+        let nr = [BinaryDigit(0xffe3_u16), BinaryDigit(0x619a), BinaryDigit(0x50)];
+        let mut product = [BinaryDigit(0u16); 4];
+        mul_digit_into(&nr, BinaryDigit(0x00ff), &mut product);
+        assert_eq!(product, [BinaryDigit(0xe31d), BinaryDigit(0x3964), BinaryDigit(0x5011), BinaryDigit(0)]);
+
+        let nr: [BinaryDigit<u32>; 0] = [];
+        let mut product = [BinaryDigit(0u32); 1];
+        mul_digit_into(&nr, BinaryDigit(0xa57f7fb1), &mut product);
+        assert_eq!(product, [BinaryDigit(0)]);
+
+        let nr = [BinaryDigit(0xffe316fa_u32), BinaryDigit(0x619a99ff), BinaryDigit(0xa7ff321c)];
+        let mut product = [BinaryDigit(0u32); 4];
+        mul_digit_into(&nr, BinaryDigit(0xa57f9af2), &mut product);
+        assert_eq!(product, [
+            BinaryDigit(0x08841c54),
+            BinaryDigit(0xaab6e366),
+            BinaryDigit(0x7a5f827f),
+            BinaryDigit(0x6c9b3894)
+        ]);
+
+        let nr = [BinaryDigit(0xffe316fa_u32), BinaryDigit(0x619a99ff), BinaryDigit(0x77ff321c)];
+        let mut product = [BinaryDigit(0u32); 4];
+        mul_digit_into(&nr, BinaryDigit(2), &mut product);
+        assert_eq!(product, [
+            BinaryDigit(0xffc62df4),
+            BinaryDigit(0xc33533ff),
+            BinaryDigit(0xeffe6438),
+            BinaryDigit(0)
+        ]);
+
+        let nr = [BinaryDigit(0xffe316fa98326729_u64), BinaryDigit(0x619a99fff34ddad3)];
+        let mut product = [BinaryDigit(0u64); 3];
+        mul_digit_into(&nr, BinaryDigit(0x3d453d24a57f9af2), &mut product);
+        assert_eq!(product, [
+            BinaryDigit(0x67a0bcb4cc0b2ec2),
+            BinaryDigit(0xe5c8cc73088dad7a),
+            BinaryDigit(0x175c3cad4e7f121f)
+        ]);
+    }
+
+    #[test]
+    fn test_mul_digit_into_decimal()
+    {
+        let nr: [DecimalDigit<u8>; 0] = [];
+        let mut product = [DecimalDigit(0u8); 1];
+        mul_digit_into(&nr, DecimalDigit(57), &mut product);
+        assert_eq!(product, [DecimalDigit(0)]);
+
+        let nr = [DecimalDigit(99_u8), DecimalDigit(61), DecimalDigit(97)];
+        let mut product = [DecimalDigit(0u8); 4];
+        mul_digit_into(&nr, DecimalDigit(57), &mut product);
+        assert_eq!(product, [DecimalDigit(43), DecimalDigit(33), DecimalDigit(64), DecimalDigit(55)]);
+
+        let nr = [DecimalDigit(93_u8), DecimalDigit(87), DecimalDigit(21)];
+        let mut product = [DecimalDigit(0u8); 4];
+        mul_digit_into(&nr, DecimalDigit(3), &mut product);
+        assert_eq!(product, [DecimalDigit(79), DecimalDigit(63), DecimalDigit(65), DecimalDigit(0)]);
+
+        let nr: [DecimalDigit<u16>; 0] = [];
+        let mut product = [DecimalDigit(0u16); 1];
+        mul_digit_into(&nr, DecimalDigit(8_739), &mut product);
+        assert_eq!(product, [DecimalDigit(0)]);
+
+        let nr = [DecimalDigit(9_935_u16), DecimalDigit(6_193), DecimalDigit(4_324)];
+        let mut product = [DecimalDigit(0u16); 4];
+        mul_digit_into(&nr, DecimalDigit(8_739), &mut product);
+        assert_eq!(product, [DecimalDigit(1_965), DecimalDigit(9_309), DecimalDigit(2_848), DecimalDigit(3_779)]);
+
+        let nr = [DecimalDigit(9_935u16), DecimalDigit(6_193), DecimalDigit(45)];
+        let mut product = [DecimalDigit(0u16); 4];
+        mul_digit_into(&nr, DecimalDigit(175), &mut product);
+        assert_eq!(product, [DecimalDigit(8_625), DecimalDigit(3_948), DecimalDigit(7_983), DecimalDigit(0)]);
+
+        let nr: [DecimalDigit<u32>; 0] = [];
+        let mut product = [DecimalDigit(0u32); 1];
+        mul_digit_into(&nr, DecimalDigit(123_761_987), &mut product);
+        assert_eq!(product, [DecimalDigit(0)]);
+
+        let nr = [DecimalDigit(873_817_123_u32), DecimalDigit(999_987_999), DecimalDigit(281_784_299)];
+        let mut product = [DecimalDigit(0u32); 4];
+        mul_digit_into(&nr, DecimalDigit(123_761_987), &mut product);
+        assert_eq!(product, [
+            DecimalDigit(417_103_401),
+            DecimalDigit(840_539_356),
+            DecimalDigit(873_402_614),
+            DecimalDigit(34_874_184)
+        ]);
+
+        let nr = [DecimalDigit(873_817_123_u32), DecimalDigit(999_987_999), DecimalDigit(4_299)];
+        let mut product = [DecimalDigit(0u32); 4];
+        mul_digit_into(&nr, DecimalDigit(2_987), &mut product);
+        assert_eq!(product, [
+            DecimalDigit( 91_746_401),
+            DecimalDigit(964_155_623),
+            DecimalDigit(12_844_099),
+            DecimalDigit(0)
+        ]);
+
+        let nr = [DecimalDigit(5_873_817_123_123_777_879_u64), DecimalDigit(7_999_987_999_345_142_555)];
+        let mut product = [DecimalDigit(0u64); 3];
+        mul_digit_into(&nr, DecimalDigit(6_123_761_987_748_339_967), &mut product);
+        assert_eq!(product, [
+            DecimalDigit(3_334_168_447_886_189_993),
+            DecimalDigit(  432_382_588_376_065_863),
+            DecimalDigit(4_899_002_241_283_267_563)
+        ]);
     }
 
     #[test]
